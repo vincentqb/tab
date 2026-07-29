@@ -19,6 +19,14 @@ edits. See `README.md` for install and usage.
 
 Run `npm test` before declaring any logic change done.
 
+## Lint / format
+
+`uvx pre-commit install` once per clone (wires both stages). Prettier is the only
+formatter and owns js/css/html/json/md — don't add a second one. Hooks that
+rewrite files fail the first commit by design; re-stage and commit again. Fix the
+underlying issue rather than passing `--no-verify`; to skip one hook for one
+commit, use `SKIP=<hook-id> git commit`.
+
 ## Conventions (look wrong, are intentional)
 
 - **The pure/UI split is the core invariant.** All tab-organization logic lives in
