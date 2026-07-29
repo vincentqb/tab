@@ -189,7 +189,9 @@ function wireCardDnd(card) {
   card.addEventListener("dragend", () => {
     dragTabId = null;
     card.classList.remove("dragging");
-    document.querySelectorAll(".column.drop-target").forEach((c) => c.classList.remove("drop-target"));
+    document
+      .querySelectorAll(".column.drop-target")
+      .forEach((c) => c.classList.remove("drop-target"));
   });
 }
 

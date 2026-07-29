@@ -9,16 +9,10 @@
       "strict_min_version": "115.0"
     }
   },
-  "permissions": [
-    "tabs"
-  ],
-  "optional_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["tabs"],
+  "optional_permissions": ["<all_urls>"],
   "background": {
-    "scripts": [
-      "src/background.js"
-    ]
+    "scripts": ["src/background.js"]
   },
   "action": {
     "default_title": "Open Tab Organizer",

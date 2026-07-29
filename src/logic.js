@@ -82,9 +82,38 @@ function compareForKeep(a, b) {
 // --- Similarity clustering -------------------------------------------------
 
 const STOPWORDS = new Set([
-  "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is",
-  "at", "by", "from", "as", "it", "your", "you", "how", "what", "www", "com",
-  "org", "net", "io", "html", "php", "home", "page", "new", "tab",
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "of",
+  "to",
+  "in",
+  "on",
+  "for",
+  "with",
+  "is",
+  "at",
+  "by",
+  "from",
+  "as",
+  "it",
+  "your",
+  "you",
+  "how",
+  "what",
+  "www",
+  "com",
+  "org",
+  "net",
+  "io",
+  "html",
+  "php",
+  "home",
+  "page",
+  "new",
+  "tab",
 ]);
 
 // Registrable-domain-ish key: last two labels of the host. Good enough to keep
@@ -106,7 +135,9 @@ export function tokenize(tab) {
   const tokens = new Set();
   const add = (text) => {
     if (!text) return;
-    for (const raw of String(text).toLowerCase().split(/[^a-z0-9]+/)) {
+    for (const raw of String(text)
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)) {
       if (raw.length < 3 || STOPWORDS.has(raw) || /^\d+$/.test(raw)) continue;
       tokens.add(raw);
     }
@@ -195,7 +226,14 @@ export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
 const INTENT_RULES = [
   {
     label: "Work",
-    hosts: [/github\.com$/, /gitlab\.com$/, /atlassian\.net$/, /jira\./, /bitbucket\./, /amazon\.com$/i],
+    hosts: [
+      /github\.com$/,
+      /gitlab\.com$/,
+      /atlassian\.net$/,
+      /jira\./,
+      /bitbucket\./,
+      /amazon\.com$/i,
+    ],
     paths: [/\/(pull|merge_requests|issues|commit)\b/],
   },
   {
@@ -204,24 +242,59 @@ const INTENT_RULES = [
   },
   {
     label: "Docs & Writing",
-    hosts: [/docs\.google\.com$/, /notion\.so$/, /quip\.com$/, /confluence\./, /sharepoint\./, /overleaf\.com$/],
+    hosts: [
+      /docs\.google\.com$/,
+      /notion\.so$/,
+      /quip\.com$/,
+      /confluence\./,
+      /sharepoint\./,
+      /overleaf\.com$/,
+    ],
   },
   {
     label: "Reading",
-    hosts: [/wikipedia\.org$/, /medium\.com$/, /substack\.com$/, /arxiv\.org$/, /news\.ycombinator\.com$/, /\.blog$/],
+    hosts: [
+      /wikipedia\.org$/,
+      /medium\.com$/,
+      /substack\.com$/,
+      /arxiv\.org$/,
+      /news\.ycombinator\.com$/,
+      /\.blog$/,
+    ],
     paths: [/\/(blog|article|post|wiki)\b/],
   },
   {
     label: "Reference",
-    hosts: [/stackoverflow\.com$/, /stackexchange\.com$/, /developer\.mozilla\.org$/, /docs\./, /readthedocs\./, /man7\.org$/],
+    hosts: [
+      /stackoverflow\.com$/,
+      /stackexchange\.com$/,
+      /developer\.mozilla\.org$/,
+      /docs\./,
+      /readthedocs\./,
+      /man7\.org$/,
+    ],
   },
   {
     label: "Media",
-    hosts: [/youtube\.com$/, /youtu\.be$/, /netflix\.com$/, /twitch\.tv$/, /spotify\.com$/, /vimeo\.com$/],
+    hosts: [
+      /youtube\.com$/,
+      /youtu\.be$/,
+      /netflix\.com$/,
+      /twitch\.tv$/,
+      /spotify\.com$/,
+      /vimeo\.com$/,
+    ],
   },
   {
     label: "Social",
-    hosts: [/twitter\.com$/, /x\.com$/, /reddit\.com$/, /facebook\.com$/, /instagram\.com$/, /linkedin\.com$/],
+    hosts: [
+      /twitter\.com$/,
+      /x\.com$/,
+      /reddit\.com$/,
+      /facebook\.com$/,
+      /instagram\.com$/,
+      /linkedin\.com$/,
+    ],
   },
   {
     label: "Search",
@@ -270,9 +343,7 @@ export function smartGroups(tabs) {
   for (const cluster of clusterBySimilarity(unknown)) {
     columns.push({ label: cluster.label, tabs: cluster.tabs });
   }
-  return columns.sort(
-    (a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label),
-  );
+  return columns.sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
 
 // --- View builders ---------------------------------------------------------

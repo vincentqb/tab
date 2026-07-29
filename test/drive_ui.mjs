@@ -13,7 +13,12 @@ const shots = join(root, "test", "screenshots");
 
 // ES modules can't be imported over file:// (opaque origin) — serve the
 // extension root over http:// so the harness matches how moz-extension:// loads.
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+};
 const server = createServer(async (req, res) => {
   try {
     const path = join(root, decodeURIComponent(req.url.split("?")[0]));
@@ -68,7 +73,11 @@ const smartLabels = await page.locator(".column-label").allTextContents();
 const smartCards = await page.locator(".card").count();
 check("smart view preserves all tabs", smartCards === 120, `${smartCards} cards`);
 for (const expected of ["Work", "Communication", "Media", "Reading", "Reference", "Social"]) {
-  check(`smart view surfaces the ${expected} bucket`, smartLabels.includes(expected), smartLabels.join(", "));
+  check(
+    `smart view surfaces the ${expected} bucket`,
+    smartLabels.includes(expected),
+    smartLabels.join(", "),
+  );
 }
 await page.screenshot({ path: join(shots, "03-smart.png") });
 
@@ -136,7 +145,9 @@ check("apply reports completion", /applied/i.test(applyBanner), applyBanner.trim
 await page.evaluate(() => (window.__calls = []));
 await page.click("#visual-toggle");
 await page.waitForTimeout(500);
-const boardHasVisual = await page.evaluate(() => document.getElementById("board").classList.contains("visual"));
+const boardHasVisual = await page.evaluate(() =>
+  document.getElementById("board").classList.contains("visual"),
+);
 check("visual toggle enables visual board mode", boardHasVisual);
 
 check("no console/page errors", errors.length === 0, errors.slice(0, 3).join(" | "));

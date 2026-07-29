@@ -1,0 +1,51 @@
+# Pre-commit gate for this repo. Bootstrap:
+#   uvx pre-commit install          # wires both pre-commit and pre-push stages
+#   uvx pre-commit run --all-files  # run over the whole repo
+#   uvx pre-commit autoupdate       # bump every rev: deliberately, review the diff
+# Schema: https://pre-commit.com
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  # --- language-agnostic hygiene ---
+- repo: https://github.com/codespell-project/codespell
+  rev: v2.4.3
+  hooks:
+  - id: codespell
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: end-of-file-fixer
+  - id: mixed-line-ending
+  - id: trailing-whitespace
+  - id: check-json
+  - id: check-yaml
+  - id: check-merge-conflict
+  - id: check-added-large-files
+
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.16.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--autofix]
+
+  # --- format: JS, CSS, HTML, JSON, Markdown ---
+  # Prettier owns every file type here, so there is exactly one formatter and no
+  # tool fights over Markdown. Upstream pre-commit/mirrors-prettier is archived;
+  # rbubley's fork is the maintained mirror.
+- repo: https://github.com/rbubley/mirrors-prettier
+  rev: v3.9.6
+  hooks:
+  - id: prettier
+    types_or: [javascript, css, html, json, markdown]
+
+  # --- tests: pre-push, not pre-commit (too slow to gate every commit) ---
+- repo: local
+  hooks:
+  - id: node-test
+    name: node --test (pre-push)
+    entry: node --test test/logic.test.js
+    language: system
+    pass_filenames: false
+    always_run: true
+    stages: [pre-push]

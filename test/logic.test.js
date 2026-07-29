@@ -55,10 +55,7 @@ test("findDuplicates groups matches and keeps the leftmost tab", () => {
   const groups = findDuplicates(tabs);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].keep.id, 1);
-  assert.deepEqual(
-    groups[0].remove.map((t) => t.id).sort(),
-    [2, 3],
-  );
+  assert.deepEqual(groups[0].remove.map((t) => t.id).sort(), [2, 3]);
 });
 
 test("duplicateTabIds returns exactly the removable ids", () => {
@@ -113,13 +110,26 @@ test("clusterBySimilarity keeps same-domain tabs together", () => {
 
 test("clusterBySimilarity merges topically similar tabs across domains", () => {
   const tabs = [
-    { id: 1, windowId: 1, url: "https://doc.rust-lang.org/book/async.html", title: "Async Rust Programming" },
-    { id: 2, windowId: 2, url: "https://tokio.rs/tokio/tutorial", title: "Async Rust with Tokio runtime" },
+    {
+      id: 1,
+      windowId: 1,
+      url: "https://doc.rust-lang.org/book/async.html",
+      title: "Async Rust Programming",
+    },
+    {
+      id: 2,
+      windowId: 2,
+      url: "https://tokio.rs/tokio/tutorial",
+      title: "Async Rust with Tokio runtime",
+    },
     { id: 3, windowId: 1, url: "https://cooking.com/pasta", title: "Best pasta recipe" },
   ];
   const clusters = clusterBySimilarity(tabs, { threshold: 0.15 });
   const rustCluster = clusters.find((c) => c.tabs.some((t) => t.id === 1));
-  assert.ok(rustCluster.tabs.some((t) => t.id === 2), "rust tabs should merge");
+  assert.ok(
+    rustCluster.tabs.some((t) => t.id === 2),
+    "rust tabs should merge",
+  );
   assert.ok(!rustCluster.tabs.some((t) => t.id === 3), "pasta stays separate");
 });
 
@@ -152,7 +162,10 @@ test("clusterBySimilarity handles 100+ tabs quickly", () => {
   const clusters = clusterBySimilarity(tabs);
   const ms = Number(process.hrtime.bigint() - start) / 1e6;
   assert.ok(ms < 500, `clustering 150 tabs took ${ms}ms`);
-  assert.equal(clusters.reduce((n, c) => n + c.tabs.length, 0), 150);
+  assert.equal(
+    clusters.reduce((n, c) => n + c.tabs.length, 0),
+    150,
+  );
 });
 
 test("groupByWindow yields one column per window carrying windowId", () => {
@@ -164,7 +177,10 @@ test("groupByWindow yields one column per window carrying windowId", () => {
   const cols = groupByWindow(tabs);
   assert.equal(cols.length, 2);
   assert.equal(cols[0].windowId, 10);
-  assert.deepEqual(cols[1].tabs.map((t) => t.id), [1, 3]);
+  assert.deepEqual(
+    cols[1].tabs.map((t) => t.id),
+    [1, 3],
+  );
 });
 
 test("groupByDomain buckets subdomains together, largest first", () => {
@@ -199,8 +215,14 @@ test("groupByRegex without capture group does match/no-match split", () => {
   const cols = groupByRegex(tabs, "invoice");
   const matched = cols.find((c) => c.label !== "no match");
   const unmatched = cols.find((c) => c.label === "no match");
-  assert.deepEqual(matched.tabs.map((t) => t.id), [1]);
-  assert.deepEqual(unmatched.tabs.map((t) => t.id), [2]);
+  assert.deepEqual(
+    matched.tabs.map((t) => t.id),
+    [1],
+  );
+  assert.deepEqual(
+    unmatched.tabs.map((t) => t.id),
+    [2],
+  );
 });
 
 test("groupByRegex throws on invalid pattern", () => {
@@ -223,7 +245,14 @@ test("planApply maps window view to a no-op (each column keeps its window)", () 
 test("planApply gives contested window to the larger claimant, spills rest to new", () => {
   // Two columns both drawn mostly from window 10; only one can keep it.
   const columns = [
-    { label: "big", tabs: [{ id: 1, windowId: 10 }, { id: 2, windowId: 10 }, { id: 3, windowId: 10 }] },
+    {
+      label: "big",
+      tabs: [
+        { id: 1, windowId: 10 },
+        { id: 2, windowId: 10 },
+        { id: 3, windowId: 10 },
+      ],
+    },
     { label: "small", tabs: [{ id: 4, windowId: 10 }] },
   ];
   const plan = planApply(columns, [10]);
