@@ -11,7 +11,7 @@ arrangement back to the browser.
 
 A normal web page can't read or move your browser tabs — only a WebExtension can
 (`browser.tabs` / `browser.windows`). So this is a small Firefox add-on whose UI
-*is* a webpage: click the toolbar button and it opens the manager in a regular
+_is_ a webpage: click the toolbar button and it opens the manager in a regular
 tab.
 
 ## Install (temporary — no signing needed)
@@ -34,8 +34,8 @@ Temporary add-ons vanish on restart. To keep it:
 
 - **Firefox Developer Edition / Nightly / ESR:** set
   `xpinstall.signatures.required` to `false` in `about:config`, then zip this
-  folder's *contents* (not the folder itself), rename the `.zip` to `.xpi`, and
-  install via `about:addons` → gear → *Install Add-on From File*. Release Firefox
+  folder's _contents_ (not the folder itself), rename the `.zip` to `.xpi`, and
+  install via `about:addons` → gear → _Install Add-on From File_. Release Firefox
   refuses unsigned add-ons regardless of this setting.
 - **Any Firefox:** submit the packaged add-on to
   [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing.
@@ -43,15 +43,15 @@ Temporary add-ons vanish on restart. To keep it:
 ## Using it
 
 **Views.** Each button regroups the same tabs; nothing moves in the browser until
-you click *Apply layout*.
+you click _Apply layout_.
 
-| View | Grouping |
-| --- | --- |
-| Windows | The windows as they are right now |
-| Domain | By site, with subdomains folded together (`mail.` + `docs.google.com`) |
-| Smart | By what a tab is *for* — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Unrecognized tabs fall back to similarity so nothing lands in a junk drawer |
-| Similarity | Clusters by shared words in URL + title, so related tabs group even across different sites |
-| Regex | Your pattern. A capture group buckets by the captured text (`://([^/]+)` groups by host); a plain pattern splits match / no-match |
+| View       | Grouping                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows    | The windows as they are right now                                                                                                                                                    |
+| Domain     | By site, with subdomains folded together (`mail.` + `docs.google.com`)                                                                                                               |
+| Smart      | By what a tab is _for_ — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Unrecognized tabs fall back to similarity so nothing lands in a junk drawer |
+| Similarity | Clusters by shared words in URL + title, so related tabs group even across different sites                                                                                           |
+| Regex      | Your pattern. A capture group buckets by the captured text (`://([^/]+)` groups by host); a plain pattern splits match / no-match                                                    |
 
 **Each tab** shows favicon, title, and host. Double-click a card to jump to that
 tab; the `×` closes it.
@@ -98,7 +98,6 @@ test/               unit tests + the UI harness/driver
 
 ## Style
 
-The interface follows the design language of
-[vincentqb.github.io](https://vincentqb.github.io/): monochrome type with a
-single imperial-red accent, small-caps headings, and the left-rail-plus-dot
-markers from that site's timeline.
+Clean, professional, minimal — card columns, one blue accent, red reserved for
+destructive actions and duplicate flags. Colors live as CSS custom properties at
+the top of `manager.css` and follow the system light/dark preference.
