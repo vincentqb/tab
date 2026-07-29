@@ -118,20 +118,6 @@ body {
   cursor: default;
 }
 
-.regex-input {
-  font: inherit;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  min-width: 220px;
-}
-
-.regex-input.invalid {
-  border-color: var(--danger);
-}
-
 .switch {
   display: inline-flex;
   align-items: center;

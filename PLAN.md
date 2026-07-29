@@ -3,7 +3,7 @@ Goal: Create a clean-professional-minimal firefox tab manager, with the followin
 - the entry point is a UI webpage like any other tab.
 - it shows a description of each webpage.
 - button to toggle visualization and snapshot, or just title/description text and icon.
-- buttons allow me to see different views: per-window, per-domain, regex, magic/smart, similarity, etc
+- buttons allow me to see different views: per-window, per-domain, magic/smart, similarity, etc
 - button to remove duplicates from views
 - i can drag and drop tabs between windows to give a new custom organization
 - button to apply the new view

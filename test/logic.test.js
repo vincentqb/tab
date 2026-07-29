@@ -9,7 +9,6 @@ import {
   clusterBySimilarity,
   groupByWindow,
   groupByDomain,
-  groupByRegex,
   planApply,
   intentOf,
   smartGroups,
@@ -194,39 +193,6 @@ test("groupByDomain buckets subdomains together, largest first", () => {
   assert.equal(cols[0].label, "google.com");
   assert.equal(cols[0].tabs.length, 2);
   assert.ok(cols.some((c) => c.label === "other" && c.tabs[0].id === 4));
-});
-
-test("groupByRegex buckets by first capture group", () => {
-  const tabs = [
-    { id: 1, windowId: 1, url: "https://github.com/x", title: "gh" },
-    { id: 2, windowId: 1, url: "https://github.com/y", title: "gh2" },
-    { id: 3, windowId: 1, url: "https://gitlab.com/z", title: "gl" },
-  ];
-  const cols = groupByRegex(tabs, "://([^/]+)");
-  const gh = cols.find((c) => c.label === "github.com");
-  assert.equal(gh.tabs.length, 2);
-});
-
-test("groupByRegex without capture group does match/no-match split", () => {
-  const tabs = [
-    { id: 1, windowId: 1, url: "https://a.com", title: "Invoice 2024" },
-    { id: 2, windowId: 1, url: "https://b.com", title: "Cat pictures" },
-  ];
-  const cols = groupByRegex(tabs, "invoice");
-  const matched = cols.find((c) => c.label !== "no match");
-  const unmatched = cols.find((c) => c.label === "no match");
-  assert.deepEqual(
-    matched.tabs.map((t) => t.id),
-    [1],
-  );
-  assert.deepEqual(
-    unmatched.tabs.map((t) => t.id),
-    [2],
-  );
-});
-
-test("groupByRegex throws on invalid pattern", () => {
-  assert.throws(() => groupByRegex([], "("));
 });
 
 test("planApply maps window view to a no-op (each column keeps its window)", () => {

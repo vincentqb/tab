@@ -1,7 +1,7 @@
 {
   "name": "tab-organizer",
   "version": "1.0.0",
-  "description": "Firefox tab manager: view by window/domain/smart/similarity/regex, drag between windows, dedupe, apply.",
+  "description": "Firefox tab manager: view by window/domain/smart/similarity, drag between windows, dedupe, apply.",
   "type": "module",
   "private": true,
   "scripts": {

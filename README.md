@@ -1,8 +1,8 @@
 # Tab Organizer
 
 A Firefox add-on that opens a full-page tab manager in its own tab. See every
-open tab across every window, regroup them by window, domain, intent, similarity
-or a regex, drag tabs between windows, remove duplicates, and **apply** the new
+open tab across every window, regroup them by window, domain, intent or
+similarity, drag tabs between windows, remove duplicates, and **apply** the new
 arrangement back to the browser.
 
 ![Smart view](test/screenshots/03-smart.png)
@@ -51,7 +51,6 @@ you click _Apply layout_.
 | Domain     | By site, with subdomains folded together (`mail.` + `docs.google.com`)                                                                                                               |
 | Smart      | By what a tab is _for_ — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Unrecognized tabs fall back to similarity so nothing lands in a junk drawer |
 | Similarity | Clusters by shared words in URL + title, so related tabs group even across different sites                                                                                           |
-| Regex      | Your pattern. A capture group buckets by the captured text (`://([^/]+)` groups by host); a plain pattern splits match / no-match                                                    |
 
 **Each tab** shows favicon, title, and host. Double-click a card to jump to that
 tab; the `×` closes it.

@@ -90,20 +90,6 @@ check("similarity view preserves all tabs", simCards === 120, `${simCards} cards
 check("similarity view produces clusters", simCols >= 1, `${simCols} clusters`);
 await page.screenshot({ path: join(shots, "04-similarity.png") });
 
-// --- Regex view ---
-await page.click('[data-view="regex"]');
-await page.fill("#regex-input", "://([^/]+)");
-await page.waitForTimeout(200);
-const regexCols = await page.locator(".column").count();
-check("regex capture-group view buckets by host", regexCols >= 5, `${regexCols} columns`);
-// invalid pattern surfaces a banner, not a crash
-await page.fill("#regex-input", "(");
-await page.waitForTimeout(150);
-const banner = await page.locator("#banner").textContent();
-check("invalid regex shows error banner", /Invalid regex/.test(banner), banner.trim());
-await page.fill("#regex-input", "");
-await page.waitForTimeout(100);
-
 // --- Dedupe ---
 await page.click('[data-view="window"]');
 await page.waitForTimeout(150);

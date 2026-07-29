@@ -378,37 +378,6 @@ export function groupByDomain(tabs) {
     .sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
 
-// Regex view. If the pattern has a capturing group, tabs are bucketed by the
-// first captured substring (e.g. `://([^/]+)` groups by host); otherwise it's a
-// binary match/no-match split. Matches against `${title}\n${url}`. Throws on an
-// invalid pattern so the UI can surface the error.
-export function groupByRegex(tabs, pattern, flags = "i") {
-  const re = new RegExp(pattern, flags);
-  const buckets = new Map();
-  const push = (label, tab) => {
-    if (!buckets.has(label)) buckets.set(label, []);
-    buckets.get(label).push(tab);
-  };
-  for (const tab of tabs) {
-    const hay = `${tab.title ?? ""}\n${tab.url ?? ""}`;
-    const m = re.exec(hay);
-    if (!m) {
-      push("no match", tab);
-    } else if (m.length > 1) {
-      push(m[1] || "(empty capture)", tab);
-    } else {
-      push(`/${pattern}/`, tab);
-    }
-  }
-  return [...buckets.entries()]
-    .map(([label, group]) => ({ label, tabs: group }))
-    .sort((a, b) => {
-      if (a.label === "no match") return 1;
-      if (b.label === "no match") return -1;
-      return b.tabs.length - a.tabs.length || a.label.localeCompare(b.label);
-    });
-}
-
 // --- Apply planner ---------------------------------------------------------
 //
 // Turn an on-screen arrangement (ordered columns of tabs) into a plan that maps

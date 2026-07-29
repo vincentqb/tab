@@ -1,7 +1,6 @@
 import {
   groupByWindow,
   groupByDomain,
-  groupByRegex,
   clusterBySimilarity,
   smartGroups,
   duplicateTabIds,
@@ -22,7 +21,6 @@ const state = {
   tabsById: new Map(), // id -> tab object from the browser
   columns: [], // [{ id, label, windowId?, tabIds: number[] }]
   view: "window",
-  regex: "",
   visual: false,
 };
 
@@ -30,7 +28,6 @@ const els = {
   board: document.getElementById("board"),
   stat: document.getElementById("stat"),
   banner: document.getElementById("banner"),
-  regexInput: document.getElementById("regex-input"),
   visualToggle: document.getElementById("visual-toggle"),
   columnTpl: document.getElementById("column-tpl"),
   cardTpl: document.getElementById("card-tpl"),
@@ -77,20 +74,10 @@ function toColumns(groups) {
 function rebuildColumns() {
   const tabs = [...state.tabsById.values()];
   let groups;
-  try {
-    if (state.view === "domain") groups = groupByDomain(tabs);
-    else if (state.view === "smart") groups = smartGroups(tabs);
-    else if (state.view === "similarity") groups = clusterBySimilarity(tabs);
-    else if (state.view === "regex") {
-      groups = state.regex.trim() ? groupByRegex(tabs, state.regex.trim()) : groupByWindow(tabs);
-      setBanner("");
-    } else groups = groupByWindow(tabs);
-  } catch (err) {
-    setBanner(`Invalid regex: ${err.message}`, true);
-    els.regexInput.classList.add("invalid");
-    return;
-  }
-  els.regexInput.classList.remove("invalid");
+  if (state.view === "domain") groups = groupByDomain(tabs);
+  else if (state.view === "smart") groups = smartGroups(tabs);
+  else if (state.view === "similarity") groups = clusterBySimilarity(tabs);
+  else groups = groupByWindow(tabs);
   state.columns = toColumns(groups);
   render();
 }
@@ -378,18 +365,12 @@ function selectView(view) {
   document.querySelectorAll(".view-btn").forEach((b) => {
     b.setAttribute("aria-selected", String(b.dataset.view === view));
   });
-  els.regexInput.hidden = view !== "regex";
-  if (view === "regex") els.regexInput.focus();
   rebuildColumns();
 }
 
 function init() {
   document.querySelectorAll(".view-btn").forEach((btn) => {
     btn.addEventListener("click", () => selectView(btn.dataset.view));
-  });
-  els.regexInput.addEventListener("input", (e) => {
-    state.regex = e.target.value;
-    if (state.view === "regex") rebuildColumns();
   });
   els.visualToggle.addEventListener("change", (e) => {
     if (e.target.checked) enableVisual();
