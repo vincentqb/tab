@@ -1,0 +1,378 @@
+/* Design language borrowed from vincentqb.github.io: monochrome type with a
+   single imperial-red accent, small-caps headings, white / white-bis section
+   alternation, left-rail markers, and padding-shift hover transitions. */
+
+:root {
+  --black: hsl(0deg 0% 0%);
+  --grey: hsl(0deg 0% 40%);
+  --grey-light: hsl(0deg 0% 71%);
+  --white: hsl(0deg 0% 100%);
+  --white-bis: hsl(0deg 0% 98%);
+  --white-ter: hsl(0deg 0% 96%);
+  --border: hsl(0deg 0% 86%);
+
+  /* Imperial red — the only color on the page */
+  --primary: hsl(0deg 85% 54%);
+  --primary-dark: hsl(0deg 85% 35%);
+  --primary-40: hsl(0deg 85% 54% / 40%);
+  --primary-10: hsl(0deg 85% 54% / 10%);
+
+  --duration: 0.2s;
+  --easing: ease-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --black: hsl(0deg 0% 96%);
+    --grey: hsl(0deg 0% 64%);
+    --grey-light: hsl(0deg 0% 45%);
+    --white: hsl(0deg 0% 9%);
+    --white-bis: hsl(0deg 0% 12%);
+    --white-ter: hsl(0deg 0% 16%);
+    --border: hsl(0deg 0% 24%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--black);
+  background: var(--white-bis);
+}
+
+/* --- Toolbar --- */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant: small-caps;
+  letter-spacing: 0.5px;
+  color: var(--black);
+}
+
+.stat {
+  color: var(--grey);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Nav-style view switcher: text links, small-caps, red on hover/active */
+.view-btn {
+  font: inherit;
+  font-variant: small-caps;
+  font-weight: 500;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+  padding: 4px 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--grey);
+  cursor: pointer;
+  transition: color var(--duration) var(--easing),
+    border-color var(--duration) var(--easing);
+}
+
+.view-btn:hover {
+  color: var(--primary);
+}
+
+.view-btn[aria-selected="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.action-btn {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--white);
+  color: var(--black);
+  cursor: pointer;
+  transition: all var(--duration) var(--easing);
+}
+
+.action-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.action-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--white);
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .action-btn.primary {
+    color: hsl(0deg 0% 100%);
+  }
+}
+
+.action-btn.primary:hover {
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
+  color: hsl(0deg 0% 100%);
+}
+
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: var(--border);
+  color: var(--grey);
+}
+
+.regex-input {
+  font: inherit;
+  font-size: 14px;
+  padding: 5px 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--black);
+  min-width: 220px;
+}
+
+.regex-input:focus {
+  outline: none;
+  border-bottom-color: var(--primary);
+}
+
+.regex-input.invalid {
+  border-bottom-color: var(--primary-dark);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--grey);
+  font-variant: small-caps;
+  font-size: 15px;
+}
+
+.switch input {
+  accent-color: var(--primary);
+}
+
+/* --- Banner --- */
+.banner {
+  padding: 10px 24px;
+  background: var(--primary-10);
+  border-bottom: 1px solid var(--primary-40);
+  color: var(--black);
+  font-size: 14px;
+}
+
+.banner.error {
+  color: var(--primary-dark);
+  font-weight: 500;
+}
+
+/* --- Board & columns --- */
+.board {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 24px;
+  overflow-x: auto;
+  min-height: calc(100vh - 70px);
+}
+
+/* Left rail + dot marker, as on the site's experience timeline */
+.column {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 118px);
+  position: relative;
+  padding-left: 16px;
+  border-left: 3px solid var(--primary-40);
+  transition: border-color var(--duration) var(--easing);
+}
+
+.column::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 6px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--primary-40);
+  transition: all var(--duration) var(--easing);
+}
+
+.column:hover {
+  border-left-color: var(--primary);
+}
+
+.column:hover::before {
+  background: var(--primary);
+  transform: scale(1.2);
+}
+
+.column.drop-target {
+  border-left-color: var(--primary);
+}
+
+.column.drop-target::before {
+  background: var(--primary);
+  transform: scale(1.4);
+}
+
+.column-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 10px;
+  position: sticky;
+  top: 0;
+  background: var(--white-bis);
+}
+
+.column-label {
+  font-weight: 600;
+  font-variant: small-caps;
+  font-size: 17px;
+  letter-spacing: 0.3px;
+  color: var(--black);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-count {
+  color: var(--grey);
+  font-size: 13px;
+  font-style: italic;
+  flex: 0 0 auto;
+}
+
+.tablist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Cards --- */
+.card {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  cursor: grab;
+  transition: padding var(--duration) var(--easing),
+    background var(--duration) var(--easing);
+}
+
+.card:hover {
+  background: var(--white-ter);
+  padding-left: 8px;
+  padding-right: 4px;
+}
+
+.card:last-child {
+  border-bottom: none;
+}
+
+.card.dragging {
+  opacity: 0.4;
+}
+
+/* Duplicates: red left-edge flag, not a filled box */
+.card.dup {
+  box-shadow: inset 3px 0 0 var(--primary);
+  padding-left: 8px;
+}
+
+.favicon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--black);
+}
+
+.card-host {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  background: var(--white);
+}
+
+.card-close {
+  border: none;
+  background: transparent;
+  color: var(--grey-light);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color var(--duration) var(--easing);
+}
+
+.card-close:hover {
+  color: var(--primary);
+}

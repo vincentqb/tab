@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tab Organizer</title>
+    <link rel="stylesheet" href="manager.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="toolbar-group">
+        <h1 class="brand">Tab Organizer</h1>
+        <span id="stat" class="stat" aria-live="polite"></span>
+      </div>
+
+      <nav class="toolbar-group views" role="tablist" aria-label="View mode">
+        <button class="view-btn" data-view="window" role="tab">Windows</button>
+        <button class="view-btn" data-view="domain" role="tab">Domain</button>
+        <button class="view-btn" data-view="smart" role="tab">Smart</button>
+        <button class="view-btn" data-view="similarity" role="tab">Similarity</button>
+        <button class="view-btn" data-view="regex" role="tab">Regex</button>
+        <input
+          id="regex-input"
+          class="regex-input"
+          type="text"
+          placeholder="pattern, e.g. ://([^/]+)"
+          hidden
+        />
+      </nav>
+
+      <div class="toolbar-group">
+        <label class="switch" title="Show page thumbnails (asks for capture permission)">
+          <input id="visual-toggle" type="checkbox" />
+          <span>Visual</span>
+        </label>
+        <button id="dedupe-btn" class="action-btn">Remove duplicates</button>
+        <button id="apply-btn" class="action-btn primary">Apply layout</button>
+        <button id="refresh-btn" class="action-btn" title="Reload tabs from the browser">Refresh</button>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <main id="board" class="board" aria-label="Tab columns"></main>
+
+    <template id="column-tpl">
+      <section class="column" aria-label="tab column">
+        <div class="column-head">
+          <span class="column-label"></span>
+          <span class="column-count"></span>
+        </div>
+        <ul class="tablist"></ul>
+      </section>
+    </template>
+
+    <template id="card-tpl">
+      <li class="card" draggable="true">
+        <img class="favicon" alt="" width="16" height="16" />
+        <div class="card-body">
+          <span class="card-title"></span>
+          <span class="card-host"></span>
+        </div>
+        <img class="thumb" alt="" hidden />
+        <button class="card-close" title="Close tab" aria-label="Close tab">&times;</button>
+      </li>
+    </template>
+
+    <script type="module" src="src/manager.js"></script>
+  </body>
+</html>

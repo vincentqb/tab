@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Organizer",
+  "version": "1.0.0",
+  "description": "A full-page tab manager: view tabs by window, domain, regex, similarity, or intent; drag them between windows; remove duplicates; apply a new layout.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tab-organizer@vincentqb",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "tabs"
+  ],
+  "optional_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "src/background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Open Tab Organizer",
+    "default_icon": "icons/icon.svg"
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  }
+}
