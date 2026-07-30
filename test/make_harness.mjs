@@ -1,8 +1,3 @@
-// Build a browser-loadable harness from the real manager.html by injecting a
-// mock `browser` API (classic script, runs before the deferred module) plus a
-// seed of fake tabs. Lets us screenshot the actual UI without the privileged
-// WebExtension APIs. Writes _harness.html at the extension root so the relative
-// manager.css / src/manager.js paths still resolve.
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -28,10 +23,9 @@ const DOMAINS = [
 const tabs = [];
 let id = 1;
 for (let w = 1; w <= 4; w++) {
-  const perWindow = w === 1 ? 45 : 25; // window 1 is heavy -> 120 total
+  const perWindow = w === 1 ? 45 : 25;
   for (let i = 0; i < perWindow; i++) {
     const [host, title] = DOMAINS[(id + w) % DOMAINS.length];
-    // sprinkle exact duplicates so the dedupe highlight shows
     const path = id % 11 === 0 ? "/shared-page" : `/p/${id}`;
     tabs.push({
       id: id,
@@ -52,6 +46,7 @@ const mock = `
   window.__calls = [];
   const rec = (name, arg) => window.__calls.push({ name, arg });
   let nextWin = 100;
+  let nextTab = 9000;
   window.browser = {
     runtime: { getURL: () => MANAGER },
     tabs: {
@@ -59,8 +54,12 @@ const mock = `
       remove: async (ids) => rec("tabs.remove", ids),
       move: async (ids, opts) => rec("tabs.move", { ids, opts }),
       update: async (id, opts) => rec("tabs.update", { id, opts }),
-      create: async (opts) => { rec("tabs.create", opts); return { id: 9999 }; },
-      captureTab: async () => { throw new Error("no capture in harness"); },
+      create: async (opts) => { rec("tabs.create", opts); return { id: nextTab++ }; },
+      captureTab: async (id) => {
+        rec("tabs.captureTab", id);
+        if (id % 17 === 0) throw new Error("cannot capture privileged page");
+        return "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=";
+      },
     },
     windows: {
       update: async (id, opts) => rec("windows.update", { id, opts }),

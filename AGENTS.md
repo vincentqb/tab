@@ -39,6 +39,14 @@ commit, use `SKIP=<hook-id> git commit`.
 - `smartGroups` is intent-based (what a tab is _for_) and deliberately separate
   from `clusterBySimilarity` (token overlap). Add a new domain to `INTENT_RULES`,
   don't widen the similarity threshold to fake it.
+- UI labels and internal names differ on purpose: the buttons read Current,
+  Domain, Purpose, Topic; the `data-view` values stay `window`, `domain`, `smart`,
+  `similarity`. Rename the label, not the function.
+- Column drag reorders `state.columns` only — board sugar that must never issue a
+  `browser.*` call. Card drag is the one that changes what Apply will do.
+- Saved sessions carry `{ version, groups: [{ label, tabs: [{ url, title }] }] }`
+  and no browser ids; ids mean nothing in a later session. `parseSession` accepts
+  looser shapes so a hand-edited file still imports, and keeps `http(s)` only.
 - Plain ES modules loaded by the browser — no transpile step. `import` works from
   `moz-extension://` but **not** `file://` (opaque origin); the UI driver serves
   over `http://` for that reason.
@@ -71,6 +79,6 @@ there rather than hard-coding a hex in a rule.
   ≠ "the feature works."
 - **Surgical edits.** Touch only what the task needs; match local style; flag
   pre-existing dead code rather than delete it.
-- **Comments: almost none.** Names and tests carry _what_; a comment earns its
-  place only for the non-obvious _why_.
+- **No comments.** Names and tests carry the meaning. Reach for a clearer name or
+  a smaller function instead of a comment; never narrate an edit.
 - Honest, direct, calibrated — say what was verified vs. assumed. Not sycophantic.

@@ -9,6 +9,10 @@ import {
   clusterBySimilarity,
   groupByWindow,
   groupByDomain,
+  sessionFromColumns,
+  parseSession,
+  isImportableUrl,
+  SESSION_VERSION,
   planApply,
   intentOf,
   smartGroups,
@@ -195,6 +199,90 @@ test("groupByDomain buckets subdomains together, largest first", () => {
   assert.ok(cols.some((c) => c.label === "other" && c.tabs[0].id === 4));
 });
 
+test("sessionFromColumns keeps labels and drops browser ids", () => {
+  const session = sessionFromColumns([
+    { label: "Work", tabs: [{ id: 1, windowId: 3, url: "https://a.com", title: "A" }] },
+    { label: "Media", tabs: [{ id: 2, windowId: 4, url: "https://b.com", title: "B" }] },
+  ]);
+  assert.equal(session.version, SESSION_VERSION);
+  assert.deepEqual(session.groups, [
+    { label: "Work", tabs: [{ url: "https://a.com", title: "A" }] },
+    { label: "Media", tabs: [{ url: "https://b.com", title: "B" }] },
+  ]);
+});
+
+test("sessionFromColumns skips urlless tabs and empty groups", () => {
+  const session = sessionFromColumns([
+    { label: "keep", tabs: [{ id: 1, url: "https://a.com" }, { id: 2 }] },
+    { label: "drop", tabs: [] },
+  ]);
+  assert.equal(session.groups.length, 1);
+  assert.deepEqual(session.groups[0].tabs, [{ url: "https://a.com", title: "" }]);
+});
+
+test("a saved session round-trips through parseSession", () => {
+  const columns = [
+    { label: "Work", tabs: [{ id: 1, url: "https://a.com/x", title: "A" }] },
+    {
+      label: "Reading",
+      tabs: [
+        { id: 2, url: "https://b.com", title: "B" },
+        { id: 3, url: "https://c.com", title: "C" },
+      ],
+    },
+  ];
+  const groups = parseSession(JSON.stringify(sessionFromColumns(columns)));
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.tabs.map((t) => t.url)]),
+    [
+      ["Work", ["https://a.com/x"]],
+      ["Reading", ["https://b.com", "https://c.com"]],
+    ],
+  );
+});
+
+test("isImportableUrl accepts only http(s)", () => {
+  assert.ok(isImportableUrl("https://a.com"));
+  assert.ok(isImportableUrl("http://a.com"));
+  for (const bad of ["about:blank", "file:///tmp/x", "javascript:alert(1)", "", null]) {
+    assert.equal(isImportableUrl(bad), false);
+  }
+});
+
+test("parseSession drops unrestorable URLs but keeps the rest of the group", () => {
+  const groups = parseSession(
+    JSON.stringify({
+      version: 1,
+      groups: [
+        {
+          label: "Mixed",
+          tabs: [
+            { url: "about:config" },
+            { url: "https://ok.com", title: "Ok" },
+            { url: "javascript:alert(1)" },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(groups, [{ label: "Mixed", tabs: [{ url: "https://ok.com", title: "Ok" }] }]);
+});
+
+test("parseSession accepts a flat tab list and bare url strings", () => {
+  const flat = parseSession(JSON.stringify({ tabs: ["https://a.com", "https://b.com"] }));
+  assert.equal(flat.length, 1);
+  assert.equal(flat[0].tabs.length, 2);
+
+  const bare = parseSession(JSON.stringify([{ tabs: [{ url: "https://a.com" }] }]));
+  assert.equal(bare[0].label, "Imported 1");
+});
+
+test("parseSession throws a showable message on junk input", () => {
+  assert.throws(() => parseSession("not json"), /valid JSON/);
+  assert.throws(() => parseSession('{"nope":1}'), /no groups or tabs/);
+  assert.throws(() => parseSession('{"groups":[{"tabs":["about:blank"]}]}'), /no importable/);
+});
+
 test("planApply maps window view to a no-op (each column keeps its window)", () => {
   const tabs = [
     { id: 1, windowId: 10, url: "https://a.com" },
@@ -209,7 +297,6 @@ test("planApply maps window view to a no-op (each column keeps its window)", () 
 });
 
 test("planApply gives contested window to the larger claimant, spills rest to new", () => {
-  // Two columns both drawn mostly from window 10; only one can keep it.
   const columns = [
     {
       label: "big",
@@ -260,7 +347,6 @@ test("smartGroups buckets by intent, not just token overlap", () => {
   const cols = smartGroups(tabs);
   const work = cols.find((c) => c.label === "Work");
   const media = cols.find((c) => c.label === "Media");
-  // github and gitlab share no tokens, yet both are Work.
   assert.deepEqual(work.tabs.map((t) => t.id).sort(), [1, 2]);
   assert.deepEqual(media.tabs.map((t) => t.id).sort(), [3, 4]);
 });

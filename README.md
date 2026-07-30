@@ -1,11 +1,11 @@
 # Tab Organizer
 
 A Firefox add-on that opens a full-page tab manager in its own tab. See every
-open tab across every window, regroup them by window, domain, intent or
-similarity, drag tabs between windows, remove duplicates, and **apply** the new
-arrangement back to the browser.
+open tab across every window, regroup them by window, site, purpose or topic,
+drag tabs between windows, remove duplicates, save the arrangement to a file, and
+**apply** it back to the browser.
 
-![Smart view](test/screenshots/03-smart.png)
+![Purpose view](test/screenshots/03-smart.png)
 
 ## Why it's an add-on, not just a webpage
 
@@ -16,8 +16,7 @@ tab.
 
 ## Install (temporary — no signing needed)
 
-Temporary add-ons load instantly and stay until you restart Firefox. Good for
-personal use.
+Temporary add-ons load instantly and stay until you restart Firefox.
 
 1. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on…**.
@@ -45,28 +44,47 @@ Temporary add-ons vanish on restart. To keep it:
 **Views.** Each button regroups the same tabs; nothing moves in the browser until
 you click _Apply layout_.
 
-| View       | Grouping                                                                                                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Windows    | The windows as they are right now                                                                                                                                                    |
-| Domain     | By site, with subdomains folded together (`mail.` + `docs.google.com`)                                                                                                               |
-| Smart      | By what a tab is _for_ — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Unrecognized tabs fall back to similarity so nothing lands in a junk drawer |
-| Similarity | Clusters by shared words in URL + title, so related tabs group even across different sites                                                                                           |
+| View    | Grouping                                                                                                                                                                                                                                       |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current | Your windows as they are right now. Applying it is a no-op                                                                                                                                                                                     |
+| Domain  | One column per site, subdomains folded together (`mail.` + `docs.google.com`)                                                                                                                                                                  |
+| Purpose | Named buckets by what a tab is for — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Gmail, Slack and Outlook land in one column even though they share no words. Sites outside the list fall through to Topic |
+| Topic   | Clusters tabs whose titles and URLs share words, so a rust doc, a rust Stack Overflow answer and a rust video group across sites. Labels and cluster count depend on what you have open                                                        |
+
+Purpose reads a list of ~50 host patterns in `src/logic.js`; Topic computes word
+overlap (Jaccard ≥ 0.26) and merges the closest pair until nothing else matches.
+Both run locally — no network, no model.
 
 **Each tab** shows favicon, title, and host. Double-click a card to jump to that
 tab; the `×` closes it.
 
-**Visual** toggle adds a small page thumbnail to each card. It asks for the
+**Visual** adds a page thumbnail to each card. Everything on screen is captured
+first, then the queue fills to 100 tabs whether or not they're visible; past that
+the rest load as you scroll. Three captures run at a time so a hundred-tab board
+stays responsive. Firefox blocks capture on `about:` and add-on pages, so those
+cards keep the favicon, and the banner says how many it got. The toggle asks for
 content-access permission only when you turn it on, so a default install stays
-minimal-permission. Thumbnails load lazily as you scroll, which is what keeps
-100+ tabs responsive.
+minimal-permission.
 
 **Remove duplicates** finds tabs with the same URL — ignoring `www.`, trailing
 slashes, fragments, and tracking params like `utm_*` — keeps the leftmost of each
 set and closes the rest. Duplicates are flagged with a red edge before you click.
 
-**Drag** any card into another column to rearrange, then **Apply layout** to
-materialize the columns into real Firefox windows. Existing windows are reused
-where possible to keep the disruption small.
+**Drag** a card into another column to regroup it, or within a column to reorder
+it. Drag a column header to move the whole column; that rearranges the board
+only and never touches your tabs.
+
+**Save** writes the current grouping to a JSON file, one group per column.
+**Import** reads that file back and opens each group as a new window, leaving
+your existing windows alone. Import keeps `http(s)` URLs only — Firefox won't let
+an add-on reopen `about:` or `file:` pages. Imported duplicates are yours to
+clear with **Remove duplicates**.
+
+**Apply layout** turns the columns into real Firefox windows. A column reuses the
+window that already holds most of its tabs, so the Current view applies as a
+no-op; leftover columns take the remaining windows, then spill into new ones. The
+window count follows the column count — Firefox closes a window when its last tab
+moves out, so grouping 4 windows into 2 columns leaves you with 2 windows.
 
 ## Development
 
@@ -81,8 +99,8 @@ the only part that touches the WebExtension APIs.
 
 `npm run test:ui` builds `_harness.html` — the real page wired to a mocked
 `browser` API seeded with 120 fake tabs — and drives it with Playwright to check
-rendering, every view, dedupe, drag-and-drop, and apply. It needs Playwright and
-a browser binary; skip it if you don't have them.
+rendering, every view, dedupe, drag-and-drop, save, import, thumbnails, and
+apply. It needs Playwright and a browser binary; skip it if you don't have them.
 
 ## Layout
 
@@ -90,8 +108,8 @@ a browser binary; skip it if you don't have them.
 manifest.json      add-on manifest (MV3, Firefox)
 manager.html/css   the full-page UI
 src/background.js   opens the manager when the toolbar button is clicked
-src/manager.js      UI: rendering, drag/drop, actions, lazy thumbnails
-src/logic.js        pure logic: canonicalize, dedupe, views, intent, clustering, apply planner
+src/manager.js      UI: rendering, drag/drop, actions, save/import, thumbnails
+src/logic.js        pure logic: canonicalize, dedupe, views, intent, clustering, session, apply planner
 test/               unit tests + the UI harness/driver
 ```
 

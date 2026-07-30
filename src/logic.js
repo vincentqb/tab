@@ -1,7 +1,3 @@
-// Pure tab-organization logic. No browser APIs — importable by the extension UI
-// (as an ES module) and by `node --test`. A "tab" here is any object with at
-// least { id, windowId, url, title }.
-
 const IGNORED_QUERY_KEYS = new Set([
   "utm_source",
   "utm_medium",
@@ -15,10 +11,6 @@ const IGNORED_QUERY_KEYS = new Set([
   "ref_url",
 ]);
 
-// Canonical form of a URL for duplicate detection: drop protocol, "www.",
-// tracking params, trailing slash, and the fragment. Two tabs are duplicates
-// when their canonical URLs match. Falls back to the raw string for
-// URLs it cannot parse (about:, file:, moz-extension:, etc.).
 export function canonicalizeUrl(rawUrl) {
   if (!rawUrl) return "";
   let parsed;
@@ -42,9 +34,6 @@ export function canonicalizeUrl(rawUrl) {
   return `${host}${path}${query ? `?${query}` : ""}`;
 }
 
-// Group tabs by canonical URL. Returns groups of size >= 2, each sorted so the
-// tab to KEEP is first (lowest windowId, then lowest index/id — a stable,
-// leftmost-wins rule) and the rest are removal candidates.
 export function findDuplicates(tabs) {
   const byCanonical = new Map();
   for (const tab of tabs) {
@@ -67,7 +56,6 @@ export function findDuplicates(tabs) {
   return groups;
 }
 
-// Flat list of tab ids that findDuplicates would remove.
 export function duplicateTabIds(tabs) {
   return findDuplicates(tabs).flatMap((g) => g.remove.map((t) => t.id));
 }
@@ -78,8 +66,6 @@ function compareForKeep(a, b) {
   const bi = b.index ?? b.id ?? 0;
   return ai - bi;
 }
-
-// --- Similarity clustering -------------------------------------------------
 
 const STOPWORDS = new Set([
   "the",
@@ -116,8 +102,6 @@ const STOPWORDS = new Set([
   "tab",
 ]);
 
-// Registrable-domain-ish key: last two labels of the host. Good enough to keep
-// mail.google.com and docs.google.com together without a public-suffix list.
 export function domainKey(rawUrl) {
   try {
     const host = new URL(rawUrl).host.replace(/^www\./, "");
@@ -129,8 +113,6 @@ export function domainKey(rawUrl) {
   }
 }
 
-// Bag of lowercased word tokens drawn from the host labels, path segments, and
-// title — the signal used to cluster tabs that share a topic across domains.
 export function tokenize(tab) {
   const tokens = new Set();
   const add = (text) => {
@@ -146,9 +128,7 @@ export function tokenize(tab) {
     const parsed = new URL(tab.url);
     for (const label of parsed.host.replace(/^www\./, "").split(".")) add(label);
     add(parsed.pathname.replace(/[/_-]+/g, " "));
-  } catch {
-    // non-URL tab; rely on the title
-  }
+  } catch {}
   add(tab.title);
   return tokens;
 }
@@ -160,17 +140,9 @@ function jaccard(a, b) {
   return intersection / (a.size + b.size - intersection);
 }
 
-// Cluster tabs by similarity. Tabs on the same registrable domain always land
-// together; beyond that, tabs are merged when their token-set Jaccard overlap
-// meets `threshold`. Single-agglomeration pass over domain seed-groups — O(n^2)
-// in the number of groups, which is fine for a browser's worth of tabs.
-//
-// Returns clusters sorted largest-first, each { label, tabs }. `label` is the
-// dominant domain or, for title-only clusters, the most common shared token.
 export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
   if (tabs.length === 0) return [];
 
-  // Seed: one group per domain, plus each domainless tab as its own group.
   const seeds = new Map();
   const loners = [];
   for (const tab of tabs) {
@@ -188,7 +160,6 @@ export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
     tokens: unionTokens(groupTabs),
   }));
 
-  // Agglomerate: repeatedly merge the most-similar pair above threshold.
   let merged = true;
   while (merged && groups.length > 1) {
     merged = false;
@@ -217,12 +188,6 @@ export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
     .sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
 
-// --- Smart view ------------------------------------------------------------
-
-// Intent buckets, checked in order. Distinct from `clusterBySimilarity`, which
-// only measures token overlap: this asks "what is this tab FOR", so a GitHub PR
-// and a Jira ticket land in Work while a YouTube video and Netflix land in
-// Media, even though they share no tokens.
 const INTENT_RULES = [
   {
     label: "Work",
@@ -321,9 +286,6 @@ export function intentOf(tab) {
   return "";
 }
 
-// Smart grouping: bucket by intent first, then fall back to similarity
-// clustering for whatever has no known intent, so nothing lands in a junk
-// drawer. Returns the same { label, tabs } column shape as the other views.
 export function smartGroups(tabs) {
   if (tabs.length === 0) return [];
   const byIntent = new Map();
@@ -339,18 +301,11 @@ export function smartGroups(tabs) {
   }
 
   const columns = [...byIntent.entries()].map(([label, group]) => ({ label, tabs: group }));
-  // Unrecognized tabs still get organized — by similarity, not dumped together.
   for (const cluster of clusterBySimilarity(unknown)) {
     columns.push({ label: cluster.label, tabs: cluster.tabs });
   }
   return columns.sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
-
-// --- View builders ---------------------------------------------------------
-//
-// Every view returns an array of columns { label, tabs } (largest/leftmost
-// first). The UI renders one column per browser window. `groupByWindow`
-// additionally carries `windowId` so Apply can treat it as a no-op.
 
 export function groupByWindow(tabs) {
   const byWindow = new Map();
@@ -378,22 +333,60 @@ export function groupByDomain(tabs) {
     .sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
 
-// --- Apply planner ---------------------------------------------------------
-//
-// Turn an on-screen arrangement (ordered columns of tabs) into a plan that maps
-// each column onto a target Firefox window, minimizing moves: a column reuses
-// the existing window that already holds the plurality of its tabs (so applying
-// the Window view is a no-op); leftover columns reuse remaining windows, then
-// spill into new ones. Pure — the executor resolves `null` targets to real
-// window ids as it creates them.
-//
-// Returns one entry per column: { targetWindowId, isNew, tabIds }.
+export const SESSION_VERSION = 1;
+
+export function sessionFromColumns(columns) {
+  return {
+    version: SESSION_VERSION,
+    groups: columns
+      .map((col) => ({
+        label: col.label,
+        tabs: col.tabs.filter((t) => t?.url).map((t) => ({ url: t.url, title: t.title ?? "" })),
+      }))
+      .filter((g) => g.tabs.length > 0),
+  };
+}
+
+export function isImportableUrl(url) {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function parseSession(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("not valid JSON");
+  }
+  let raw;
+  if (Array.isArray(data)) raw = data;
+  else if (Array.isArray(data?.groups)) raw = data.groups;
+  else if (Array.isArray(data?.tabs)) raw = [{ label: "Imported", tabs: data.tabs }];
+  else throw new Error("no groups or tabs found");
+
+  const groups = raw
+    .map((group, i) => ({
+      label: group?.label ? String(group.label) : `Imported ${i + 1}`,
+      tabs: (Array.isArray(group?.tabs) ? group.tabs : [])
+        .map((t) => (typeof t === "string" ? { url: t } : t))
+        .filter((t) => isImportableUrl(t?.url))
+        .map((t) => ({ url: t.url, title: t.title ? String(t.title) : "" })),
+    }))
+    .filter((group) => group.tabs.length > 0);
+  if (groups.length === 0) throw new Error("no importable http(s) URLs found");
+  return groups;
+}
+
 export function planApply(columns, existingWindowIds) {
   const existing = [...existingWindowIds].sort((a, b) => a - b);
   const available = new Set(existing);
   const targets = new Array(columns.length).fill(undefined);
 
-  // Plurality window preference per column, strongest claim first.
   const prefs = columns.map((col) => {
     const counts = new Map();
     for (const tab of col.tabs) {
@@ -403,7 +396,6 @@ export function planApply(columns, existingWindowIds) {
     return { candidates: ranked.map((e) => e[0]), top: ranked[0]?.[1] ?? 0 };
   });
 
-  // Resolve strongest claims first so the biggest group wins a contested window.
   const order = columns.map((_, i) => i).sort((a, b) => prefs[b].top - prefs[a].top);
   for (const i of order) {
     for (const wid of prefs[i].candidates) {
@@ -435,8 +427,6 @@ function unionTokens(groupTabs) {
   return all;
 }
 
-// A cluster's label: the most common registrable domain, else the most common
-// shared token across titles, else "misc".
 function labelFor(groupTabs) {
   const domainCounts = new Map();
   for (const tab of groupTabs) {

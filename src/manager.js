@@ -6,6 +6,8 @@ import {
   duplicateTabIds,
   planApply,
   domainKey,
+  sessionFromColumns,
+  parseSession,
 } from "./logic.js";
 
 const MANAGER_URL = browser.runtime.getURL("manager.html");
@@ -18,8 +20,8 @@ const FALLBACK_ICON =
   );
 
 const state = {
-  tabsById: new Map(), // id -> tab object from the browser
-  columns: [], // [{ id, label, windowId?, tabIds: number[] }]
+  tabsById: new Map(),
+  columns: [],
   view: "window",
   visual: false,
 };
@@ -29,15 +31,14 @@ const els = {
   stat: document.getElementById("stat"),
   banner: document.getElementById("banner"),
   visualToggle: document.getElementById("visual-toggle"),
+  importFile: document.getElementById("import-file"),
   columnTpl: document.getElementById("column-tpl"),
   cardTpl: document.getElementById("card-tpl"),
 };
 
 let colSeq = 0;
 const nextColId = () => `col-${colSeq++}`;
-const thumbCache = new Map(); // tabId -> dataURL
-
-// --- Load & view building --------------------------------------------------
+const thumbCache = new Map();
 
 async function loadTabs() {
   const tabs = await browser.tabs.query({});
@@ -47,7 +48,6 @@ async function loadTabs() {
 }
 
 function currentTabs() {
-  // Tabs in board order (respects any custom drag arrangement).
   const seen = new Set();
   const ordered = [];
   for (const col of state.columns) {
@@ -82,8 +82,6 @@ function rebuildColumns() {
   render();
 }
 
-// --- Rendering -------------------------------------------------------------
-
 function render() {
   const dupIds = new Set(duplicateTabIds(currentTabs()));
   const frag = document.createDocumentFragment();
@@ -101,13 +99,15 @@ function render() {
       if (tab) list.appendChild(renderCard(tab, dupIds.has(id)));
     }
     wireColumnDnd(list);
+    wireColumnReorder(colNode);
     frag.appendChild(colNode);
   }
 
   els.board.replaceChildren(frag);
   els.board.classList.toggle("visual", state.visual);
   updateStats(dupIds.size);
-  if (state.visual) queueVisibleThumbs();
+  if (state.visual) queueThumbs();
+  else observer?.disconnect();
 }
 
 function renderCard(tab, isDup) {
@@ -162,9 +162,8 @@ function setBanner(text, isError = false) {
   els.banner.classList.toggle("error", isError);
 }
 
-// --- Drag & drop -----------------------------------------------------------
-
 let dragTabId = null;
+let dragColId = null;
 
 function wireCardDnd(card) {
   card.addEventListener("dragstart", (e) => {
@@ -182,9 +181,53 @@ function wireCardDnd(card) {
   });
 }
 
+function wireColumnReorder(colNode) {
+  const head = colNode.querySelector(".column-head");
+  const colId = colNode.dataset.colId;
+  head.addEventListener("dragstart", (e) => {
+    e.stopPropagation();
+    dragColId = colId;
+    colNode.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", colId);
+  });
+  head.addEventListener("dragend", () => {
+    dragColId = null;
+    colNode.classList.remove("dragging");
+    document
+      .querySelectorAll(".column.col-target")
+      .forEach((c) => c.classList.remove("col-target"));
+  });
+  colNode.addEventListener("dragover", (e) => {
+    if (dragColId == null || dragColId === colId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    colNode.classList.add("col-target");
+  });
+  colNode.addEventListener("dragleave", (e) => {
+    if (!colNode.contains(e.relatedTarget)) colNode.classList.remove("col-target");
+  });
+  colNode.addEventListener("drop", (e) => {
+    if (dragColId == null || dragColId === colId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveColumnInModel(dragColId, colId);
+    render();
+  });
+}
+
+function moveColumnInModel(fromColId, toColId) {
+  const from = state.columns.findIndex((c) => c.id === fromColId);
+  const to = state.columns.findIndex((c) => c.id === toColId);
+  if (from < 0 || to < 0) return;
+  const [moved] = state.columns.splice(from, 1);
+  state.columns.splice(to, 0, moved);
+}
+
 function wireColumnDnd(list) {
   const column = list.closest(".column");
   list.addEventListener("dragover", (e) => {
+    if (dragTabId == null) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     column.classList.add("drop-target");
@@ -218,8 +261,6 @@ function moveTabInModel(tabId, targetColId, beforeId) {
     target.tabIds.push(tabId);
   }
 }
-
-// --- Actions ---------------------------------------------------------------
 
 async function closeTab(id) {
   await browser.tabs.remove(id);
@@ -287,31 +328,113 @@ function setBusy(busy) {
   document.querySelectorAll(".action-btn").forEach((b) => (b.disabled = busy));
 }
 
-// --- Thumbnails (lazy, permission-gated) -----------------------------------
+function saveSession() {
+  const session = sessionFromColumns(
+    state.columns.map((col) => ({
+      label: col.label,
+      tabs: col.tabIds.map((id) => state.tabsById.get(id)).filter(Boolean),
+    })),
+  );
+  const count = session.groups.reduce((n, g) => n + g.tabs.length, 0);
+  if (count === 0) {
+    setBanner("Nothing to save.");
+    return;
+  }
+  const blob = new Blob([JSON.stringify(session, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `tabs-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setBanner(`Saved ${count} tabs in ${session.groups.length} groups.`);
+}
 
-let observer = null;
+async function importSession(file) {
+  let groups;
+  try {
+    groups = parseSession(await file.text());
+  } catch (err) {
+    setBanner(`Import failed: ${err.message}`, true);
+    return;
+  }
+  setBusy(true);
+  setBanner(`Importing ${groups.length} window${groups.length > 1 ? "s" : ""}…`);
+  let opened = 0;
+  try {
+    for (const group of groups) {
+      const urls = group.tabs.map((t) => t.url);
+      const win = await browser.windows.create({ url: urls[0] });
+      for (const url of urls.slice(1)) {
+        await browser.tabs.create({ windowId: win.id, url, active: false });
+      }
+      opened += urls.length;
+    }
+    setBanner(`Imported ${opened} tabs into ${groups.length} new windows.`);
+  } catch (err) {
+    setBanner(`Import failed after ${opened} tabs: ${err.message}`, true);
+  } finally {
+    await loadTabs();
+    setBusy(false);
+  }
+}
+
+const EAGER_LIMIT = 100;
+
 let capturing = 0;
-const captureQueue = [];
+let captureQueue = [];
+const queued = new Set();
+let observer = null;
 
-function queueVisibleThumbs() {
+function enqueue(id, front = false) {
+  if (thumbCache.has(id) || queued.has(id)) return;
+  queued.add(id);
+  if (front) captureQueue.unshift(id);
+  else captureQueue.push(id);
+}
+
+function queueThumbs() {
+  const cards = [...els.board.querySelectorAll(".card")];
+  const boardBottom = els.board.getBoundingClientRect().bottom;
+  const onScreen = [];
+  const rest = [];
+  for (const card of cards) {
+    const id = Number(card.dataset.tabId);
+    const box = card.getBoundingClientRect();
+    (box.top < boardBottom && box.bottom > 0 ? onScreen : rest).push(id);
+  }
+
+  captureQueue = [];
+  queued.clear();
+  for (const id of onScreen) enqueue(id);
+  for (const id of rest.slice(0, Math.max(0, EAGER_LIMIT - onScreen.length))) enqueue(id);
+  observeRest(rest.slice(Math.max(0, EAGER_LIMIT - onScreen.length)));
+  pumpCaptures();
+}
+
+function observeRest(ids) {
   observer?.disconnect();
+  if (ids.length === 0) {
+    observer = null;
+    return;
+  }
+  const pending = new Set(ids);
   observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-        const id = Number(entry.target.dataset.tabId);
         observer.unobserve(entry.target);
-        if (!thumbCache.has(id)) enqueueCapture(id);
+        const id = Number(entry.target.dataset.tabId);
+        pending.delete(id);
+        enqueue(id, true);
       }
+      pumpCaptures();
     },
-    { root: els.board, rootMargin: "200px" },
+    { root: els.board, rootMargin: "300px" },
   );
-  document.querySelectorAll(".card").forEach((c) => observer.observe(c));
-}
-
-function enqueueCapture(id) {
-  captureQueue.push(id);
-  pumpCaptures();
+  for (const card of els.board.querySelectorAll(".card")) {
+    if (pending.has(Number(card.dataset.tabId))) observer.observe(card);
+  }
 }
 
 function pumpCaptures() {
@@ -320,8 +443,26 @@ function pumpCaptures() {
     capturing++;
     captureThumb(id).finally(() => {
       capturing--;
+      queued.delete(id);
       pumpCaptures();
+      if (capturing === 0 && captureQueue.length === 0) reportThumbProgress();
     });
+  }
+}
+
+function reportThumbProgress() {
+  if (!state.visual) return;
+  const total = state.tabsById.size;
+  const got = [...state.tabsById.keys()].filter((id) => thumbCache.has(id)).length;
+  const waiting = observer ? total - Math.min(total, EAGER_LIMIT) : 0;
+  if (waiting > 0) {
+    setBanner(`Captured ${got} thumbnails; the last ${waiting} load as you scroll.`);
+  } else if (got === total) {
+    setBanner(`Captured ${got} thumbnails.`);
+  } else {
+    setBanner(
+      `Captured ${got} of ${total} thumbnails; the rest are pages Firefox won't let an add-on read.`,
+    );
   }
 }
 
@@ -336,9 +477,7 @@ async function captureThumb(id) {
       card.src = dataUrl;
       card.hidden = false;
     }
-  } catch {
-    // Privileged pages (about:, addons) can't be captured — leave favicon only.
-  }
+  } catch {}
 }
 
 async function enableVisual() {
@@ -349,7 +488,7 @@ async function enableVisual() {
     return;
   }
   state.visual = true;
-  setBanner("");
+  setBanner(`Capturing ${Math.min(state.tabsById.size, EAGER_LIMIT)} thumbnails…`);
   render();
 }
 
@@ -357,8 +496,6 @@ function disableVisual() {
   state.visual = false;
   render();
 }
-
-// --- Wiring ----------------------------------------------------------------
 
 function selectView(view) {
   state.view = view;
@@ -377,6 +514,13 @@ function init() {
     else disableVisual();
   });
   document.getElementById("dedupe-btn").addEventListener("click", removeDuplicates);
+  document.getElementById("save-btn").addEventListener("click", saveSession);
+  document.getElementById("import-btn").addEventListener("click", () => els.importFile.click());
+  els.importFile.addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) importSession(file);
+  });
   document.getElementById("apply-btn").addEventListener("click", applyLayout);
   document.getElementById("refresh-btn").addEventListener("click", () => {
     setBanner("");

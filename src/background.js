@@ -1,4 +1,3 @@
-// Open (or focus) the single manager page when the toolbar button is clicked.
 const MANAGER_URL = browser.runtime.getURL("manager.html");
 
 async function openManager() {
