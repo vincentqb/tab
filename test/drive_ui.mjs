@@ -189,6 +189,20 @@ check(
   (await page.locator(".card").count()) === 120,
   `${await page.locator(".card").count()} cards`,
 );
+// A second Enter on the same query has nothing left to take: it must not add an
+// empty column, and must leave the existing groups alone.
+const groupsBeforeRepeat = await page.locator(".column.search-column").count();
+await page.fill("#search", "rust");
+await page.waitForTimeout(200);
+await page.press("#search", "Enter");
+await page.waitForTimeout(300);
+check(
+  "re-entering the same query adds no second column",
+  (await page.locator(".column.search-column").count()) === groupsBeforeRepeat &&
+    (await page.locator(".card").count()) === 120,
+  `${await page.locator(".column.search-column").count()} groups, ${await page.locator(".card").count()} cards`,
+);
+
 const rustCol = await page.locator(".column").nth(1).locator(".card-title").allTextContents();
 check(
   "the second column holds only its own matches",

@@ -95,13 +95,7 @@ body {
   background: var(--surface-2);
 }
 
-.view-btn[aria-selected="true"] {
-  background: var(--accent-weak);
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
-}
-
+.view-btn[aria-selected="true"],
 .action-btn[aria-pressed="true"] {
   background: var(--accent-weak);
   border-color: var(--accent);

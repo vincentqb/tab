@@ -129,6 +129,7 @@ function render() {
 
   els.board.replaceChildren(frag);
   els.board.classList.toggle("visual", state.visual);
+  els.visualBtn.setAttribute("aria-pressed", String(state.visual));
   updateStats(dupIds.size);
   if (state.visual) queueThumbs();
   else observer?.disconnect();
@@ -198,6 +199,9 @@ function setBanner(text, isError = false) {
 let dragTabId = null;
 let dragColId = null;
 
+const clearHighlight = (cls) =>
+  document.querySelectorAll(`.column.${cls}`).forEach((c) => c.classList.remove(cls));
+
 function wireCardDnd(card) {
   card.addEventListener("dragstart", (e) => {
     dragTabId = Number(card.dataset.tabId);
@@ -208,9 +212,7 @@ function wireCardDnd(card) {
   card.addEventListener("dragend", () => {
     dragTabId = null;
     card.classList.remove("dragging");
-    document
-      .querySelectorAll(".column.drop-target")
-      .forEach((c) => c.classList.remove("drop-target"));
+    clearHighlight("drop-target");
   });
 }
 
@@ -227,9 +229,7 @@ function wireColumnReorder(colNode) {
   head.addEventListener("dragend", () => {
     dragColId = null;
     colNode.classList.remove("dragging");
-    document
-      .querySelectorAll(".column.col-target")
-      .forEach((c) => c.classList.remove("col-target"));
+    clearHighlight("col-target");
   });
   colNode.addEventListener("dragover", (e) => {
     if (dragColId == null || dragColId === colId) return;
@@ -532,14 +532,12 @@ async function enableVisual() {
     return;
   }
   state.visual = true;
-  els.visualBtn.setAttribute("aria-pressed", "true");
   render();
   reportThumbProgress();
 }
 
 function disableVisual() {
   state.visual = false;
-  els.visualBtn.setAttribute("aria-pressed", "false");
   observer?.disconnect();
   observer = null;
   visibleQueue.clear();
@@ -567,23 +565,23 @@ function setQuery(query) {
 function groupCurrentSearch() {
   const query = els.search.value.trim();
   if (parseQuery(query).length === 0) return;
-  const unfiltered = groupBySearches(
-    [...state.tabsById.values()],
-    [...state.searches, query],
-    () => [],
-  );
-  const column = unfiltered.find((c) => c.search === query);
-  if (!column) {
-    setBanner(`Nothing left to group for “${query}”.`);
-    return;
-  }
-  state.searches.push(query);
+  const isNew = !state.searches.includes(query);
+  if (isNew) state.searches.push(query);
   els.search.value = "";
   state.query = "";
   rebuildColumns();
-  const n = column.tabs.length;
+  const column = state.columns.find((c) => c.search === query);
+  if (!column) {
+    state.searches.pop();
+    rebuildColumns();
+    setBanner(`Nothing left to group for “${query}”.`);
+    return;
+  }
+  const n = column.tabIds.length;
   setBanner(
-    `Grouped ${n} tab${n === 1 ? "" : "s"} as “${query}”. Apply moves each group to its own window.`,
+    isNew
+      ? `Grouped ${n} tab${n === 1 ? "" : "s"} as “${query}”. Apply moves each group to its own window.`
+      : `“${query}” is already grouped, with ${n} tab${n === 1 ? "" : "s"}.`,
   );
 }
 

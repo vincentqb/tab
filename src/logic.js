@@ -1,3 +1,13 @@
+// Only http(s) can be canonicalized, tokenized, or reopened by an extension.
+export function isImportableUrl(url) {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 const IGNORED_QUERY_KEYS = new Set([
   "utm_source",
   "utm_medium",
@@ -13,15 +23,8 @@ const IGNORED_QUERY_KEYS = new Set([
 
 export function canonicalizeUrl(rawUrl) {
   if (!rawUrl) return "";
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return rawUrl.trim();
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return rawUrl.trim();
-  }
+  if (!isImportableUrl(rawUrl)) return String(rawUrl).trim();
+  const parsed = new URL(rawUrl);
   const host = parsed.host.replace(/^www\./, "");
   const params = new URLSearchParams(parsed.search);
   for (const key of [...params.keys()]) {
@@ -132,13 +135,9 @@ function words(text) {
 }
 
 export function pathTokens(tab) {
-  try {
-    const parsed = new URL(tab.url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return new Set();
-    return words(`${parsed.pathname} ${parsed.search}`);
-  } catch {
-    return new Set();
-  }
+  if (!isImportableUrl(tab.url)) return new Set();
+  const parsed = new URL(tab.url);
+  return words(`${parsed.pathname} ${parsed.search}`);
 }
 
 export function titleTokens(tab) {
@@ -220,36 +219,34 @@ export function groupByTitle(tabs) {
 
 const FUZZY_SPAN = 1.5;
 const MIN_FUZZY_LENGTH = 4;
-
 const MAX_FIELD_LENGTH = 200;
 
+// Whole title, whole host, whole path, plus each of their words. Matching a term
+// against the parts as well as the whole is what stops a gap in one field from
+// leaking into another. A Set keeps the per-keystroke scan off repeated parts.
 export function searchFields(tab) {
-  const fields = [];
+  const fields = new Set();
   const push = (text) => {
     const value = String(text ?? "")
       .toLowerCase()
       .trim()
       .slice(0, MAX_FIELD_LENGTH);
-    if (value) fields.push(value);
+    if (value.length > 1) fields.add(value);
   };
-  push(tab.title);
-  for (const word of String(tab.title ?? "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)) {
-    push(word);
-  }
-  try {
+  const pushWords = (text) => {
+    push(text);
+    for (const word of String(text ?? "").split(/[^a-zA-Z0-9]+/)) push(word);
+  };
+  pushWords(tab.title);
+  if (isImportableUrl(tab.url)) {
     const parsed = new URL(tab.url);
-    const host = parsed.host.replace(/^www\./, "");
-    push(host);
-    push(parsed.pathname);
-    for (const label of host.split(".")) push(label);
-    for (const segment of parsed.pathname.split("/")) push(segment);
+    pushWords(parsed.host.replace(/^www\./, ""));
+    pushWords(parsed.pathname);
     push(parsed.search);
-  } catch {
+  } else {
     push(tab.url);
   }
-  return fields;
+  return [...fields];
 }
 
 // Ordered-subsequence match, but only when the letters land within 1.5x the
@@ -388,15 +385,6 @@ export function sessionFromColumns(columns) {
       }))
       .filter((g) => g.tabs.length > 0),
   };
-}
-
-export function isImportableUrl(url) {
-  try {
-    const protocol = new URL(url).protocol;
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 export function parseSession(text) {
