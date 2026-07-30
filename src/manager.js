@@ -36,6 +36,7 @@ const els = {
   stat: document.getElementById("stat"),
   banner: document.getElementById("banner"),
   visualBtn: document.getElementById("visual-btn"),
+  retryBtn: document.getElementById("retry-btn"),
   importFile: document.getElementById("import-file"),
   search: document.getElementById("search"),
   columnTpl: document.getElementById("column-tpl"),
@@ -413,15 +414,24 @@ async function importSession(file) {
 }
 
 const EAGER_LIMIT = 100;
-const CAPTURE_TIMEOUT_MS = 1500;
+// Firefox renders a discarded tab before capturing it, so a first attempt can be
+// slow without the tab being uncapturable. The timeout exists to free a stuck
+// slot, not to judge the tab: it grows on each retry rather than condemning it.
+const CAPTURE_TIMEOUT_MS = [2500, 6000, 12000];
 const CAPTURE_CONCURRENCY = 4;
 
 let capturing = 0;
 let observer = null;
 const visibleQueue = new Set();
+const retryQueue = new Set();
 const backfillQueue = new Set();
 const inFlight = new Set();
-const failed = new Set();
+const attempts = new Map();
+const refused = new Set();
+
+const timedOut = (id) => !thumbCache.has(id) && !refused.has(id) && attempts.has(id);
+const exhausted = (id) => (attempts.get(id) ?? 0) >= CAPTURE_TIMEOUT_MS.length;
+const stalled = () => [...state.tabsById.keys()].filter((id) => timedOut(id) && exhausted(id));
 
 // A card grows ~4x taller once it holds a thumbnail, so a single visibility
 // measurement would prioritize a layout the thumbnails immediately invalidate.
@@ -430,6 +440,7 @@ const failed = new Set();
 function queueThumbs() {
   observer?.disconnect();
   visibleQueue.clear();
+  retryQueue.clear();
   observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
@@ -451,16 +462,21 @@ function queueThumbs() {
 function takeFrom(queue) {
   for (const id of queue) {
     queue.delete(id);
-    if (!thumbCache.has(id) && !inFlight.has(id) && !failed.has(id)) return id;
+    if (thumbCache.has(id) || inFlight.has(id) || refused.has(id)) continue;
+    if (exhausted(id)) continue;
+    return id;
   }
   return null;
 }
 
-// Visible cards are never subject to EAGER_LIMIT; the cap only throttles the
-// off-screen backfill.
+// EAGER_LIMIT throttles only the first pass over off-screen tabs. A visible card
+// and a retry both bypass it: the retry was already admitted once, and failing to
+// re-run it would strand the tab at the cap forever.
 function nextCapture() {
   const visible = takeFrom(visibleQueue);
   if (visible != null) return visible;
+  const retry = takeFrom(retryQueue);
+  if (retry != null) return retry;
   if (thumbCache.size + inFlight.size >= EAGER_LIMIT) return null;
   return takeFrom(backfillQueue);
 }
@@ -474,7 +490,9 @@ function pumpCaptures() {
     captureThumb(id).finally(() => {
       capturing--;
       inFlight.delete(id);
-      if (!thumbCache.has(id)) failed.add(id);
+      // A tab that timed out goes back in line with a longer budget; only an
+      // outright refusal is final.
+      if (timedOut(id) && !exhausted(id)) retryQueue.add(id);
       reportThumbProgress();
       pumpCaptures();
     });
@@ -486,31 +504,57 @@ function reportThumbProgress() {
   const ids = [...state.tabsById.keys()];
   const total = ids.length;
   const got = ids.filter((id) => thumbCache.has(id)).length;
-  const blocked = ids.filter((id) => failed.has(id)).length;
+  const gaveUp = stalled().length;
+  const blocked = ids.filter((id) => refused.has(id)).length + gaveUp;
   const pending = total - got - blocked;
-  const idle = capturing === 0 && visibleQueue.size === 0 && backfillQueue.size === 0;
+  const idle =
+    capturing === 0 && visibleQueue.size === 0 && retryQueue.size === 0 && backfillQueue.size === 0;
+  // Offer Retry the moment the board stops making progress, not a poll later:
+  // a banner reporting failures with no visible recourse reads as a dead end.
+  els.retryBtn.hidden = gaveUp === 0 || !(idle || pending === 0);
+  els.retryBtn.textContent = `Retry ${gaveUp}`;
   if (pending === 0 || idle) {
     const missed = total - got;
-    const tail = missed > 0 ? `; ${missed} could not be captured` : "";
+    const tail = missed > 0 ? `; ${missed} timed out or could not be captured` : "";
     setBanner(`Captured ${got} of ${total} thumbnails${tail}.`);
     return;
   }
   const parts = [`Captured ${got} of ${total} thumbnails`];
   parts.push(capturing > 0 ? `${pending} to go` : `${pending} load as you scroll`);
-  if (blocked > 0) parts.push(`${blocked} could not be captured`);
+  if (blocked > 0) parts.push(`${blocked} timed out or could not be captured`);
   setBanner(`${parts.join("; ")}${capturing > 0 ? "…" : "."}`);
+}
+
+// Retry clears the attempt counts for the tabs we gave up on, so each gets the
+// full escalating budget again. A tab Firefox refused outright is left alone.
+function retryStalled() {
+  const ids = stalled();
+  if (ids.length === 0) return;
+  for (const id of ids) {
+    attempts.delete(id);
+    retryQueue.add(id);
+  }
+  setBanner(`Retrying ${ids.length} thumbnail${ids.length === 1 ? "" : "s"}…`);
+  pumpCaptures();
 }
 
 // captureTab can hang indefinitely on a discarded or never-rendered tab, which
 // would hold a concurrency slot forever and stall the whole queue.
 async function captureThumb(id) {
   if (!state.tabsById.has(id)) return;
+  const attempt = attempts.get(id) ?? 0;
+  attempts.set(id, attempt + 1);
+  const budget = CAPTURE_TIMEOUT_MS[Math.min(attempt, CAPTURE_TIMEOUT_MS.length - 1)];
   let timer;
+  let timedOutHere = false;
   try {
     const dataUrl = await Promise.race([
       browser.tabs.captureTab(id, { format: "jpeg", quality: 45 }),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("capture timed out")), CAPTURE_TIMEOUT_MS);
+        timer = setTimeout(() => {
+          timedOutHere = true;
+          reject(new Error("capture timed out"));
+        }, budget);
       }),
     ]);
     thumbCache.set(id, dataUrl);
@@ -520,6 +564,8 @@ async function captureThumb(id) {
       thumb.hidden = false;
     }
   } catch {
+    // Firefox rejecting is a verdict (a privileged page); our own timeout is not.
+    if (!timedOutHere) refused.add(id);
   } finally {
     clearTimeout(timer);
   }
@@ -541,7 +587,9 @@ function disableVisual() {
   observer?.disconnect();
   observer = null;
   visibleQueue.clear();
+  retryQueue.clear();
   backfillQueue.clear();
+  els.retryBtn.hidden = true;
   setBanner("");
   render();
 }
@@ -629,6 +677,7 @@ function init() {
     if (e.key === "Enter") groupCurrentSearch();
     else if (e.key === "Escape") clearSearch();
   });
+  els.retryBtn.addEventListener("click", retryStalled);
   document.getElementById("dedupe-btn").addEventListener("click", removeDuplicates);
   document.getElementById("save-btn").addEventListener("click", saveSession);
   document.getElementById("import-btn").addEventListener("click", () => els.importFile.click());

@@ -398,7 +398,7 @@ await page.waitForFunction(
       document.getElementById("banner").textContent.trim(),
     ),
   null,
-  { timeout: 15000 },
+  { timeout: 40000 },
 );
 const boardHasVisual = await page.evaluate(() =>
   document.getElementById("board").classList.contains("visual"),
@@ -500,10 +500,18 @@ check(
   storedEager <= 100 && eager.length < total,
   `${storedEager} stored from ${eager.length} attempts, ${total} cards`,
 );
+// Retry means a tab CAN be captured more than once, but only a tab that timed
+// out, and never more than the number of escalating budgets.
+const repeats = (ids) => {
+  const seen = new Map();
+  for (const id of ids) seen.set(id, (seen.get(id) ?? 0) + 1);
+  return [...seen].filter(([, n]) => n > 1);
+};
+const eagerRepeats = repeats(eager);
 check(
-  "no tab is captured twice",
-  new Set(eager).size === eager.length,
-  `${eager.length} calls, ${new Set(eager).size} distinct`,
+  "only slow tabs are captured more than once, at most 3 times",
+  eagerRepeats.every(([id, n]) => (id % 23 === 0 || id % 31 === 0) && n <= 3),
+  `${eager.length} calls; repeated: ${JSON.stringify(eagerRepeats)}`,
 );
 
 for (const [label, scroll] of [
@@ -547,9 +555,31 @@ check(
   `${eager.length} -> ${afterScroll.length} captures`,
 );
 check(
-  "lazy captures never re-request a tab",
-  new Set(afterScroll).size === afterScroll.length,
-  `${afterScroll.length} calls, ${new Set(afterScroll).size} distinct`,
+  "scrolling never re-requests a tab that already has a thumbnail",
+  repeats(afterScroll).every(([id, n]) => (id % 23 === 0 || id % 31 === 0) && n <= 3),
+  `${afterScroll.length} calls; repeated: ${JSON.stringify(repeats(afterScroll))}`,
+);
+// The 23rd tab times out on its first attempt and succeeds on the second, so a
+// slow tab must not be written off. Before the escalating retry it never came
+// back: this is the check that fails if that regresses.
+const slowRecovered = await page.evaluate(() =>
+  [...document.querySelectorAll(".card")]
+    .filter((c) => Number(c.dataset.tabId) % 23 === 0 && Number(c.dataset.tabId) % 31 !== 0)
+    .map((c) => {
+      const t = c.querySelector(".thumb");
+      return { id: Number(c.dataset.tabId), got: !!(t && !t.hidden && t.src) };
+    }),
+);
+check(
+  "a tab that times out once is retried, not given up on",
+  slowRecovered.length > 0 && slowRecovered.some((s) => s.got),
+  `${slowRecovered.filter((s) => s.got).length} of ${slowRecovered.length} slow tabs recovered`,
+);
+const retryAttempts = await page.evaluate(() => window.__attempts || {});
+check(
+  "the slow tabs were attempted more than once",
+  Object.values(retryAttempts).some((n) => n > 1),
+  `attempt counts: ${JSON.stringify(retryAttempts).slice(0, 80)}`,
 );
 const visualBanner = await page.locator("#banner").textContent();
 check(

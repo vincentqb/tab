@@ -49,6 +49,7 @@ const mock = `
   const MANAGER = "moz-extension://harness/manager.html";
   const SEED = ${JSON.stringify(tabs)};
   window.__calls = [];
+  window.__attempts = {};
   const rec = (name, arg) => window.__calls.push({ name, arg });
   let nextWin = 100;
   let nextTab = 9000;
@@ -63,7 +64,12 @@ const mock = `
       captureTab: async (id) => {
         rec("tabs.captureTab", id);
         if (id % 17 === 0) throw new Error("cannot capture privileged page");
-        if (id % 23 === 0) return new Promise(() => {});
+        // slow on the first attempt only: Firefox renders a discarded tab before
+        // capturing it, so this must succeed on retry rather than be given up on
+        if (id % 23 === 0 && (window.__attempts[id] = (window.__attempts[id] || 0) + 1) === 1) {
+          return new Promise((r) => setTimeout(r, 4000));
+        }
+        if (id % 31 === 0) return new Promise(() => {});
         if (id % 29 === 0) {
           var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="2400">' +
             '<rect width="100%" height="100%" fill="#ccddee"/></svg>';
