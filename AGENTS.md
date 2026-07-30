@@ -21,11 +21,16 @@ Run `npm test` before declaring any logic change done.
 
 ## Lint / format
 
-`uvx pre-commit install` once per clone (wires both stages). Prettier is the only
-formatter and owns js/css/html/json/md — don't add a second one. Hooks that
-rewrite files fail the first commit by design; re-stage and commit again. Fix the
-underlying issue rather than passing `--no-verify`; to skip one hook for one
-commit, use `SKIP=<hook-id> git commit`.
+`uvx pre-commit install` once per clone. Everything runs at commit, `npm test`
+included — measured 1.2s for the whole gate, of which the tests are 150ms, so
+there's no stage worth splitting. Prettier is the only formatter and owns
+js/css/html/json/md — don't add a second one. Hooks that rewrite files fail the
+first commit by design; re-stage and commit again. Fix the underlying issue rather
+than passing `--no-verify`; to skip one hook for one commit, use
+`SKIP=<hook-id> git commit`.
+
+`npm run test:ui` is deliberately **not** in the gate: it needs Playwright plus a
+browser binary and takes ~40s. Run it yourself before calling a UI change done.
 
 ## Conventions (look wrong, are intentional)
 

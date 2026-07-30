@@ -1,9 +1,8 @@
 # Pre-commit gate for this repo. Bootstrap:
-#   uvx pre-commit install          # wires both pre-commit and pre-push stages
+#   uvx pre-commit install          # wires the pre-commit stage
 #   uvx pre-commit run --all-files  # run over the whole repo
 #   uvx pre-commit autoupdate       # bump every rev: deliberately, review the diff
 # Schema: https://pre-commit.com
-default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   # --- language-agnostic hygiene ---
@@ -39,13 +38,16 @@ repos:
   - id: prettier
     types_or: [javascript, css, html, json, markdown]
 
-  # --- tests: pre-push, not pre-commit (too slow to gate every commit) ---
+  # --- tests: at commit. 150ms on top of a ~1s gate, so there is no reason to
+  # let a commit record a broken logic.js. Invoked directly rather than through
+  # `npm test`, which doubles the cost in wrapper overhead alone. The UI driver
+  # stays out: it needs Playwright and a browser binary, which not every clone
+  # has, and it takes ~40s.
 - repo: local
   hooks:
   - id: node-test
-    name: node --test (pre-push)
+    name: node --test
     entry: node --test test/logic.test.js
     language: system
     pass_filenames: false
     always_run: true
-    stages: [pre-push]
