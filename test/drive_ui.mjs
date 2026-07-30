@@ -228,19 +228,39 @@ const visibleIds = await page.evaluate(() => {
     .map((c) => Number(c.dataset.tabId));
 });
 await page.click("#visual-toggle");
+// The queue must settle even though some captures never resolve; without the
+// per-capture timeout this waits forever on the "Capturing N thumbnails…" text.
 await page.waitForFunction(
-  () => /Captured \d+/.test(document.getElementById("banner").textContent),
+  () =>
+    /^Captured \d+ of \d+ thumbnails[^\u2026]*\.$/.test(
+      document.getElementById("banner").textContent.trim(),
+    ),
   null,
-  { timeout: 20000 },
+  { timeout: 15000 },
 );
 const boardHasVisual = await page.evaluate(() =>
   document.getElementById("board").classList.contains("visual"),
 );
 check("visual toggle enables visual board mode", boardHasVisual);
+const settledBanner = await page.locator("#banner").textContent();
+check(
+  "the queue settles despite captures that never resolve",
+  /^Captured \d+ of \d+ thumbnails/.test(settledBanner.trim()) && !/Capturing/.test(settledBanner),
+  settledBanner.trim(),
+);
+const hungAttempts = await page.evaluate(
+  () => window.__calls.filter((c) => c.name === "tabs.captureTab" && c.arg % 23 === 0).length,
+);
+check(
+  "tabs that hang are attempted and then abandoned",
+  hungAttempts > 0,
+  `${hungAttempts} hung captures attempted`,
+);
 const capturedIds = () =>
   page.evaluate(() => window.__calls.filter((c) => c.name === "tabs.captureTab").map((c) => c.arg));
 
-// The harness makes every 17th tab throw, mimicking a page Firefox won't capture.
+// The harness makes every 17th tab throw and every 23rd hang forever, mimicking
+// a privileged page and a discarded tab that captureTab never answers for.
 const visibleWithoutThumb = () =>
   page.evaluate(() => {
     const vh = innerHeight;
@@ -258,7 +278,7 @@ const visibleWithoutThumb = () =>
         r.bottom > list.top &&
         r.top < list.bottom;
       const id = Number(card.dataset.tabId);
-      if (!onScreen || id % 17 === 0) continue;
+      if (!onScreen || id % 17 === 0 || id % 23 === 0) continue;
       visible++;
       const thumb = card.querySelector(".thumb");
       if (!thumb || thumb.hidden || !thumb.src) missing.push(id);

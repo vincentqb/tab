@@ -380,6 +380,8 @@ async function importSession(file) {
 }
 
 const EAGER_LIMIT = 100;
+const CAPTURE_TIMEOUT_MS = 1500;
+const CAPTURE_CONCURRENCY = 4;
 
 let capturing = 0;
 let observer = null;
@@ -431,7 +433,7 @@ function nextCapture() {
 }
 
 function pumpCaptures() {
-  while (capturing < 3) {
+  while (capturing < CAPTURE_CONCURRENCY) {
     const id = nextCapture();
     if (id == null) break;
     capturing++;
@@ -440,36 +442,54 @@ function pumpCaptures() {
       capturing--;
       inFlight.delete(id);
       if (!thumbCache.has(id)) failed.add(id);
+      reportThumbProgress();
       pumpCaptures();
-      if (capturing === 0) reportThumbProgress();
     });
   }
 }
 
 function reportThumbProgress() {
   if (!state.visual) return;
-  const total = state.tabsById.size;
-  const got = [...state.tabsById.keys()].filter((id) => thumbCache.has(id)).length;
-  const blocked = [...state.tabsById.keys()].filter((id) => failed.has(id)).length;
-  const waiting = total - got - blocked;
+  const ids = [...state.tabsById.keys()];
+  const total = ids.length;
+  const got = ids.filter((id) => thumbCache.has(id)).length;
+  const blocked = ids.filter((id) => failed.has(id)).length;
+  const pending = total - got - blocked;
+  const idle = capturing === 0 && visibleQueue.size === 0 && backfillQueue.size === 0;
+  if (pending === 0 || idle) {
+    const missed = total - got;
+    const tail = missed > 0 ? `; ${missed} could not be captured` : "";
+    setBanner(`Captured ${got} of ${total} thumbnails${tail}.`);
+    return;
+  }
   const parts = [`Captured ${got} of ${total} thumbnails`];
-  if (blocked > 0) parts.push(`${blocked} are pages Firefox won't let an add-on read`);
-  if (waiting > 0) parts.push(`${waiting} load as you scroll`);
-  setBanner(`${parts.join("; ")}.`);
+  parts.push(capturing > 0 ? `${pending} to go` : `${pending} load as you scroll`);
+  if (blocked > 0) parts.push(`${blocked} could not be captured`);
+  setBanner(`${parts.join("; ")}${capturing > 0 ? "…" : "."}`);
 }
 
+// captureTab can hang indefinitely on a discarded or never-rendered tab, which
+// would hold a concurrency slot forever and stall the whole queue.
 async function captureThumb(id) {
-  const tab = state.tabsById.get(id);
-  if (!tab) return;
+  if (!state.tabsById.has(id)) return;
+  let timer;
   try {
-    const dataUrl = await browser.tabs.captureTab(id, { format: "jpeg", quality: 45 });
+    const dataUrl = await Promise.race([
+      browser.tabs.captureTab(id, { format: "jpeg", quality: 45 }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("capture timed out")), CAPTURE_TIMEOUT_MS);
+      }),
+    ]);
     thumbCache.set(id, dataUrl);
-    const card = els.board.querySelector(`.card[data-tab-id="${id}"] .thumb`);
-    if (card) {
-      card.src = dataUrl;
-      card.hidden = false;
+    const thumb = els.board.querySelector(`.card[data-tab-id="${id}"] .thumb`);
+    if (thumb) {
+      thumb.src = dataUrl;
+      thumb.hidden = false;
     }
-  } catch {}
+  } catch {
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function enableVisual() {
@@ -480,8 +500,8 @@ async function enableVisual() {
     return;
   }
   state.visual = true;
-  setBanner(`Capturing ${Math.min(state.tabsById.size, EAGER_LIMIT)} thumbnails…`);
   render();
+  reportThumbProgress();
 }
 
 function disableVisual() {

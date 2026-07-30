@@ -57,6 +57,7 @@ const mock = `
       captureTab: async (id) => {
         rec("tabs.captureTab", id);
         if (id % 17 === 0) throw new Error("cannot capture privileged page");
+        if (id % 23 === 0) return new Promise(() => {});
         return "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=";
       },
     },
