@@ -113,13 +113,19 @@ export function domainKey(rawUrl) {
   }
 }
 
+const MAX_TOKEN_LENGTH = 24;
+
+// An encoded blob (a base64 payload in a path, a hash in a title) is one huge
+// "word" that carries no meaning, groups with nothing, and would become a
+// column label. Length is the cheapest way to tell it from a real word.
 function words(text) {
   const tokens = new Set();
   if (!text) return tokens;
   for (const raw of String(text)
     .toLowerCase()
     .split(/[^a-z0-9]+/)) {
-    if (raw.length < 3 || STOPWORDS.has(raw) || /^\d+$/.test(raw)) continue;
+    if (raw.length < 3 || raw.length > MAX_TOKEN_LENGTH) continue;
+    if (STOPWORDS.has(raw) || /^\d+$/.test(raw)) continue;
     tokens.add(raw);
   }
   return tokens;
@@ -189,9 +195,19 @@ export function clusterByTokens(tabs, tokenize, { threshold = 0.26 } = {}) {
     }
   }
 
-  return groups
-    .map((g) => ({ label: labelFor(g.tabs, tokenize), tabs: g.tabs }))
-    .sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
+  // Tabs with no tokens at all can't cluster, and one nameless column each is
+  // worse than one shared column. `label: ""` lets the UI name it by fallback.
+  const named = [];
+  const nameless = [];
+  for (const g of groups) {
+    const label = labelFor(g.tabs, tokenize);
+    (label ? named : nameless).push({ label, tabs: g.tabs });
+  }
+  const columns = named.sort(
+    (a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label),
+  );
+  const rest = nameless.flatMap((g) => g.tabs);
+  return rest.length ? [...columns, { label: "", tabs: rest }] : columns;
 }
 
 export function groupByPath(tabs) {
@@ -205,12 +221,15 @@ export function groupByTitle(tabs) {
 const FUZZY_SPAN = 1.5;
 const MIN_FUZZY_LENGTH = 4;
 
+const MAX_FIELD_LENGTH = 200;
+
 export function searchFields(tab) {
   const fields = [];
   const push = (text) => {
     const value = String(text ?? "")
       .toLowerCase()
-      .trim();
+      .trim()
+      .slice(0, MAX_FIELD_LENGTH);
     if (value) fields.push(value);
   };
   push(tab.title);
@@ -457,5 +476,5 @@ function labelFor(groupTabs, tokenize) {
     for (const token of tokenize(tab)) counts.set(token, (counts.get(token) ?? 0) + 1);
   }
   const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  return ranked[0]?.[0] ?? "untitled";
+  return ranked[0]?.[0] ?? "";
 }

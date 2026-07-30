@@ -18,6 +18,12 @@ const DOMAINS = [
   ["amazon.com", "shopping cart", "/gp/cart/view"],
   ["reddit.com", "r/rust discussion", "/r/rust/comments/async_traits"],
   ["obscure-vendor.example", "invoice portal", "/billing/invoice/portal"],
+  // a real-world pathological tab: encoded payload for a path, hash for a title
+  [
+    "loop.cloud.microsoft",
+    "eyJ1IjoiaHR0cHM6Ly9hbWF6b24uc2hhcmVwb2ludC5jb20vY29udGVudHN0b3JhZ2UveDhGTk8teHRza3VDUlgy",
+    "/p/eyJ1IjoiaHR0cHM6Ly9hbWF6b24uc2hhcmVwb2ludC5jb20vY29udGVudHN0b3JhZ2UveDhGTk8teHRza3VDUlgyX2ZNVEhMYXpuSEVRU1M4ZEpwNm8yU3BqOU8wOD9uYXY9Y3owbE1rWmpiMjUwWlc1MGMzUnZjbUZuWlNVeVJuZzRSazVQTFhoMGMydDFRMUpZTWw5bVRWUklUR0Y2YmtoRlVWTlRPR1JLY0Radk1sTndhamxQTURn",
+  ],
 ];
 
 const tabs = [];
@@ -58,6 +64,11 @@ const mock = `
         rec("tabs.captureTab", id);
         if (id % 17 === 0) throw new Error("cannot capture privileged page");
         if (id % 23 === 0) return new Promise(() => {});
+        if (id % 29 === 0) {
+          var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="2400">' +
+            '<rect width="100%" height="100%" fill="#ccddee"/></svg>';
+          return "data:image/svg+xml;base64," + btoa(svg);
+        }
         return "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=";
       },
     },

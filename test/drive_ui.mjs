@@ -79,6 +79,16 @@ check(
   pathLabels.every((l) => !l.includes(".")),
   pathLabels.join(", "),
 );
+check(
+  "no column is labeled with an encoded blob",
+  pathLabels.every((l) => l.length <= 24),
+  pathLabels.map((l) => l.length).join(","),
+);
+check(
+  "pathless tabs share one fallback column instead of many",
+  pathLabels.filter((l) => l === "no path").length <= 1,
+  pathLabels.join(", "),
+);
 await page.screenshot({ path: join(shots, "03-path.png") });
 
 await page.click('[data-view="title"]');
@@ -365,7 +375,7 @@ const visibleIds = await page.evaluate(() => {
     })
     .map((c) => Number(c.dataset.tabId));
 });
-await page.click("#visual-toggle");
+await page.click("#visual-btn");
 // The queue must settle even though some captures never resolve; without the
 // per-capture timeout this waits forever on the "Capturing N thumbnails…" text.
 await page.waitForFunction(
@@ -380,6 +390,42 @@ const boardHasVisual = await page.evaluate(() =>
   document.getElementById("board").classList.contains("visual"),
 );
 check("visual toggle enables visual board mode", boardHasVisual);
+check(
+  "the Visual button shows its pressed state",
+  (await page.getAttribute("#visual-btn", "aria-pressed")) === "true",
+);
+
+// A tall page capture used to render thousands of pixels high and wedge one card
+// open between its neighbours; the close button also used to move under the
+// thumbnail instead of staying top-right.
+const cardGeometry = await page.evaluate(() => {
+  const heights = [];
+  let closeOutsideTopRight = 0;
+  for (const card of document.querySelectorAll(".card")) {
+    const thumb = card.querySelector(".thumb");
+    if (!thumb || thumb.hidden) continue;
+    const r = card.getBoundingClientRect();
+    heights.push(Math.round(r.height));
+    const c = card.querySelector(".card-close").getBoundingClientRect();
+    if (c.left - r.left < r.width / 2 || c.top - r.top > r.height / 2) closeOutsideTopRight++;
+  }
+  return {
+    withThumb: heights.length,
+    min: Math.min(...heights),
+    max: Math.max(...heights),
+    closeOutsideTopRight,
+  };
+});
+check(
+  "no thumbnail stretches its card past its neighbours",
+  cardGeometry.withThumb > 0 && cardGeometry.max === cardGeometry.min,
+  `${cardGeometry.withThumb} cards with thumbs, heights ${cardGeometry.min}-${cardGeometry.max}px`,
+);
+check(
+  "the close button stays top-right with a thumbnail shown",
+  cardGeometry.closeOutsideTopRight === 0,
+  `${cardGeometry.closeOutsideTopRight} misplaced`,
+);
 const settledBanner = await page.locator("#banner").textContent();
 check(
   "the queue settles despite captures that never resolve",

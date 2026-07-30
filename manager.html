@@ -47,10 +47,14 @@
           title="Hides tabs that don't match. Each Enter groups the matches into a new column."
           autocomplete="off"
         />
-        <label class="switch" title="Show page thumbnails (asks for capture permission)">
-          <input id="visual-toggle" type="checkbox" />
-          <span>Visual</span>
-        </label>
+        <button
+          id="visual-btn"
+          class="action-btn"
+          aria-pressed="false"
+          title="Show page thumbnails (asks for capture permission)"
+        >
+          Visual
+        </button>
         <button id="dedupe-btn" class="action-btn" title="Close every duplicate but the leftmost">
           Dedupe
         </button>

@@ -35,7 +35,7 @@ const els = {
   board: document.getElementById("board"),
   stat: document.getElementById("stat"),
   banner: document.getElementById("banner"),
-  visualToggle: document.getElementById("visual-toggle"),
+  visualBtn: document.getElementById("visual-btn"),
   importFile: document.getElementById("import-file"),
   search: document.getElementById("search"),
   columnTpl: document.getElementById("column-tpl"),
@@ -104,7 +104,9 @@ function render() {
   for (const col of state.columns) {
     const colNode = els.columnTpl.content.firstElementChild.cloneNode(true);
     colNode.dataset.colId = col.id;
-    colNode.querySelector(".column-label").textContent = col.label;
+    const labelNode = colNode.querySelector(".column-label");
+    labelNode.textContent = col.label || (state.view === "path" ? "no path" : "no title");
+    labelNode.title = labelNode.textContent;
     colNode.querySelector(".column-count").textContent = `${col.tabIds.length}`;
     const drop = colNode.querySelector(".column-drop");
     if (col.search) {
@@ -141,10 +143,9 @@ function renderCard(tab, isDup) {
   icon.src = tab.favIconUrl || FALLBACK_ICON;
   icon.addEventListener("error", () => (icon.src = FALLBACK_ICON), { once: true });
 
-  node.querySelector(".card-title").textContent = tab.title || tab.url || "(untitled)";
-  const host = safeHost(tab.url);
-  node.querySelector(".card-host").textContent = host;
-  node.title = `${tab.title || ""}\n${tab.url || ""}`;
+  node.querySelector(".card-title").textContent = clip(tab.title || tab.url || "(untitled)");
+  node.querySelector(".card-host").textContent = safeHost(tab.url);
+  node.title = `${clip(tab.title)}\n${clip(tab.url)}`;
 
   const thumb = node.querySelector(".thumb");
   if (state.visual && thumbCache.has(tab.id)) {
@@ -159,6 +160,14 @@ function renderCard(tab, isDup) {
   node.addEventListener("dblclick", () => activateTab(tab));
   wireCardDnd(node);
   return node;
+}
+
+// An encoded URL or hash title can run for thousands of characters. Truncating
+// at the source keeps it out of the DOM, the tooltip, and any saved file.
+const MAX_TEXT = 300;
+function clip(text) {
+  const value = String(text ?? "");
+  return value.length > MAX_TEXT ? `${value.slice(0, MAX_TEXT)}…` : value;
 }
 
 function safeHost(url) {
@@ -519,17 +528,18 @@ async function captureThumb(id) {
 async function enableVisual() {
   const granted = await browser.permissions.request({ origins: ["<all_urls>"] });
   if (!granted) {
-    els.visualToggle.checked = false;
     setBanner("Thumbnails need permission to read page content; kept text-only.");
     return;
   }
   state.visual = true;
+  els.visualBtn.setAttribute("aria-pressed", "true");
   render();
   reportThumbProgress();
 }
 
 function disableVisual() {
   state.visual = false;
+  els.visualBtn.setAttribute("aria-pressed", "false");
   observer?.disconnect();
   observer = null;
   visibleQueue.clear();
@@ -612,9 +622,9 @@ function init() {
   document.querySelectorAll(".view-btn").forEach((btn) => {
     btn.addEventListener("click", () => selectView(btn.dataset.view));
   });
-  els.visualToggle.addEventListener("change", (e) => {
-    if (e.target.checked) enableVisual();
-    else disableVisual();
+  els.visualBtn.addEventListener("click", () => {
+    if (state.visual) disableVisual();
+    else enableVisual();
   });
   els.search.addEventListener("input", (e) => setQuery(e.target.value));
   els.search.addEventListener("keydown", (e) => {

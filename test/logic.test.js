@@ -174,15 +174,41 @@ test("labels come from the grouping input, never the host", () => {
 
 test("clusterByTokens returns clusters largest-first and partitions all tabs", () => {
   const tabs = [
-    { id: 1, windowId: 1, url: "https://a.com/1", title: "a" },
-    { id: 2, windowId: 1, url: "https://a.com/2", title: "a" },
-    { id: 3, windowId: 1, url: "https://a.com/3", title: "a" },
-    { id: 4, windowId: 1, url: "https://b.com/1", title: "b" },
+    { id: 1, windowId: 1, url: "https://a.com/1", title: "alpha" },
+    { id: 2, windowId: 1, url: "https://a.com/2", title: "alpha" },
+    { id: 3, windowId: 1, url: "https://a.com/3", title: "alpha" },
+    { id: 4, windowId: 1, url: "https://b.com/1", title: "bravo" },
   ];
   const clusters = clusterByTokens(tabs, titleTokens);
   assert.equal(clusters[0].tabs.length, 3);
   const total = clusters.reduce((n, c) => n + c.tabs.length, 0);
   assert.equal(total, tabs.length);
+});
+
+test("tabs with no usable tokens share one column instead of one each", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/", title: "A" },
+    { id: 2, windowId: 1, url: "https://b.com/", title: "B" },
+    { id: 3, windowId: 1, url: "https://c.com/reports/annual", title: "C" },
+  ];
+  const cols = groupByPath(tabs);
+  const nameless = cols.filter((c) => c.label === "");
+  assert.equal(nameless.length, 1, `expected one nameless column, got ${cols.length} columns`);
+  assert.deepEqual(
+    nameless[0].tabs.map((t) => t.id),
+    [1, 2],
+  );
+  assert.equal(cols[cols.length - 1].label, "", "the nameless column sorts last");
+});
+
+test("an encoded blob does not become a token or a label", () => {
+  const blob = "eyJ1IjoiaHR0cHM6Ly9hbWF6b24uc2hhcmVwb2ludC5jb20vY29udGVudHN0b3JhZ2Uv";
+  const tab = { id: 1, windowId: 1, url: `https://loop.cloud.microsoft/p/${blob}`, title: blob };
+  assert.equal(pathTokens(tab).size, 0, "a 68-char base64 run is not a word");
+  assert.equal(titleTokens(tab).size, 0);
+  assert.equal(groupByPath([tab])[0].label, "");
+  const long = [...searchFields(tab)].filter((f) => f.length > 300);
+  assert.equal(long.length, 0, `search fields should not carry huge strings: ${long.length}`);
 });
 
 test("empty input yields empty clusters", () => {
