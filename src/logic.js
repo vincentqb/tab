@@ -113,24 +113,30 @@ export function domainKey(rawUrl) {
   }
 }
 
-export function tokenize(tab) {
+function words(text) {
   const tokens = new Set();
-  const add = (text) => {
-    if (!text) return;
-    for (const raw of String(text)
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)) {
-      if (raw.length < 3 || STOPWORDS.has(raw) || /^\d+$/.test(raw)) continue;
-      tokens.add(raw);
-    }
-  };
+  if (!text) return tokens;
+  for (const raw of String(text)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)) {
+    if (raw.length < 3 || STOPWORDS.has(raw) || /^\d+$/.test(raw)) continue;
+    tokens.add(raw);
+  }
+  return tokens;
+}
+
+export function pathTokens(tab) {
   try {
     const parsed = new URL(tab.url);
-    for (const label of parsed.host.replace(/^www\./, "").split(".")) add(label);
-    add(parsed.pathname.replace(/[/_-]+/g, " "));
-  } catch {}
-  add(tab.title);
-  return tokens;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return new Set();
+    return words(`${parsed.pathname} ${parsed.search}`);
+  } catch {
+    return new Set();
+  }
+}
+
+export function titleTokens(tab) {
+  return words(tab.title);
 }
 
 function jaccard(a, b) {
@@ -140,7 +146,7 @@ function jaccard(a, b) {
   return intersection / (a.size + b.size - intersection);
 }
 
-export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
+export function clusterByTokens(tabs, tokenize, { threshold = 0.26 } = {}) {
   if (tabs.length === 0) return [];
 
   const seeds = new Map();
@@ -157,7 +163,7 @@ export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
 
   let groups = [...seeds.values(), ...loners].map((groupTabs) => ({
     tabs: groupTabs,
-    tokens: unionTokens(groupTabs),
+    tokens: unionTokens(groupTabs, tokenize),
   }));
 
   let merged = true;
@@ -184,127 +190,16 @@ export function clusterBySimilarity(tabs, { threshold = 0.26 } = {}) {
   }
 
   return groups
-    .map((g) => ({ label: labelFor(g.tabs), tabs: g.tabs }))
+    .map((g) => ({ label: labelFor(g.tabs, tokenize), tabs: g.tabs }))
     .sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
 }
 
-const INTENT_RULES = [
-  {
-    label: "Work",
-    hosts: [
-      /github\.com$/,
-      /gitlab\.com$/,
-      /atlassian\.net$/,
-      /jira\./,
-      /bitbucket\./,
-      /amazon\.com$/i,
-    ],
-    paths: [/\/(pull|merge_requests|issues|commit)\b/],
-  },
-  {
-    label: "Communication",
-    hosts: [/mail\./, /gmail\./, /outlook\./, /slack\.com$/, /teams\.microsoft/, /discord\.com$/],
-  },
-  {
-    label: "Docs & Writing",
-    hosts: [
-      /docs\.google\.com$/,
-      /notion\.so$/,
-      /quip\.com$/,
-      /confluence\./,
-      /sharepoint\./,
-      /overleaf\.com$/,
-    ],
-  },
-  {
-    label: "Reading",
-    hosts: [
-      /wikipedia\.org$/,
-      /medium\.com$/,
-      /substack\.com$/,
-      /arxiv\.org$/,
-      /news\.ycombinator\.com$/,
-      /\.blog$/,
-    ],
-    paths: [/\/(blog|article|post|wiki)\b/],
-  },
-  {
-    label: "Reference",
-    hosts: [
-      /stackoverflow\.com$/,
-      /stackexchange\.com$/,
-      /developer\.mozilla\.org$/,
-      /docs\./,
-      /readthedocs\./,
-      /man7\.org$/,
-    ],
-  },
-  {
-    label: "Media",
-    hosts: [
-      /youtube\.com$/,
-      /youtu\.be$/,
-      /netflix\.com$/,
-      /twitch\.tv$/,
-      /spotify\.com$/,
-      /vimeo\.com$/,
-    ],
-  },
-  {
-    label: "Social",
-    hosts: [
-      /twitter\.com$/,
-      /x\.com$/,
-      /reddit\.com$/,
-      /facebook\.com$/,
-      /instagram\.com$/,
-      /linkedin\.com$/,
-    ],
-  },
-  {
-    label: "Search",
-    hosts: [/^(www\.)?google\.[a-z.]+$/, /bing\.com$/, /duckduckgo\.com$/],
-    paths: [/\/search\b/, /^\/\?q=/],
-  },
-];
-
-export function intentOf(tab) {
-  let host = "";
-  let path = "";
-  try {
-    const parsed = new URL(tab.url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "Browser";
-    host = parsed.host.replace(/^www\./, "");
-    path = parsed.pathname + parsed.search;
-  } catch {
-    return "Browser";
-  }
-  for (const rule of INTENT_RULES) {
-    if (rule.hosts?.some((re) => re.test(host))) return rule.label;
-    if (rule.paths?.some((re) => re.test(path))) return rule.label;
-  }
-  return "";
+export function groupByPath(tabs) {
+  return clusterByTokens(tabs, pathTokens);
 }
 
-export function smartGroups(tabs) {
-  if (tabs.length === 0) return [];
-  const byIntent = new Map();
-  const unknown = [];
-  for (const tab of tabs) {
-    const intent = intentOf(tab);
-    if (intent) {
-      if (!byIntent.has(intent)) byIntent.set(intent, []);
-      byIntent.get(intent).push(tab);
-    } else {
-      unknown.push(tab);
-    }
-  }
-
-  const columns = [...byIntent.entries()].map(([label, group]) => ({ label, tabs: group }));
-  for (const cluster of clusterBySimilarity(unknown)) {
-    columns.push({ label: cluster.label, tabs: cluster.tabs });
-  }
-  return columns.sort((a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label));
+export function groupByTitle(tabs) {
+  return clusterByTokens(tabs, titleTokens);
 }
 
 export function groupByWindow(tabs) {
@@ -421,29 +316,17 @@ export function planApply(columns, existingWindowIds) {
   }));
 }
 
-function unionTokens(groupTabs) {
+function unionTokens(groupTabs, tokenize) {
   const all = new Set();
   for (const tab of groupTabs) for (const t of tokenize(tab)) all.add(t);
   return all;
 }
 
-function labelFor(groupTabs) {
-  const domainCounts = new Map();
+function labelFor(groupTabs, tokenize) {
+  const counts = new Map();
   for (const tab of groupTabs) {
-    const dom = domainKey(tab.url);
-    if (dom) domainCounts.set(dom, (domainCounts.get(dom) ?? 0) + 1);
+    for (const token of tokenize(tab)) counts.set(token, (counts.get(token) ?? 0) + 1);
   }
-  if (domainCounts.size > 0) {
-    return [...domainCounts].sort((a, b) => b[1] - a[1])[0][0];
-  }
-  const tokenCounts = new Map();
-  for (const tab of groupTabs) {
-    for (const token of tokenize(tab)) {
-      tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
-    }
-  }
-  if (tokenCounts.size > 0) {
-    return [...tokenCounts].sort((a, b) => b[1] - a[1])[0][0];
-  }
-  return "misc";
+  const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return ranked[0]?.[0] ?? "untitled";
 }

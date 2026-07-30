@@ -1,8 +1,8 @@
 import {
   groupByWindow,
   groupByDomain,
-  clusterBySimilarity,
-  smartGroups,
+  groupByPath,
+  groupByTitle,
   duplicateTabIds,
   planApply,
   domainKey,
@@ -75,8 +75,8 @@ function rebuildColumns() {
   const tabs = [...state.tabsById.values()];
   let groups;
   if (state.view === "domain") groups = groupByDomain(tabs);
-  else if (state.view === "smart") groups = smartGroups(tabs);
-  else if (state.view === "similarity") groups = clusterBySimilarity(tabs);
+  else if (state.view === "path") groups = groupByPath(tabs);
+  else if (state.view === "title") groups = groupByTitle(tabs);
   else groups = groupByWindow(tabs);
   state.columns = toColumns(groups);
   render();
@@ -382,70 +382,66 @@ async function importSession(file) {
 const EAGER_LIMIT = 100;
 
 let capturing = 0;
-let captureQueue = [];
-const queued = new Set();
 let observer = null;
+const visibleQueue = new Set();
+const backfillQueue = new Set();
+const inFlight = new Set();
+const failed = new Set();
 
-function enqueue(id, front = false) {
-  if (thumbCache.has(id) || queued.has(id)) return;
-  queued.add(id);
-  if (front) captureQueue.unshift(id);
-  else captureQueue.push(id);
-}
-
+// A card grows ~4x taller once it holds a thumbnail, so a single visibility
+// measurement would prioritize a layout the thumbnails immediately invalidate.
+// The observer re-reports on every scroll and reflow instead, and whatever is on
+// screen always outranks the backfill.
 function queueThumbs() {
-  const cards = [...els.board.querySelectorAll(".card")];
-  const boardBottom = els.board.getBoundingClientRect().bottom;
-  const onScreen = [];
-  const rest = [];
-  for (const card of cards) {
-    const id = Number(card.dataset.tabId);
-    const box = card.getBoundingClientRect();
-    (box.top < boardBottom && box.bottom > 0 ? onScreen : rest).push(id);
-  }
-
-  captureQueue = [];
-  queued.clear();
-  for (const id of onScreen) enqueue(id);
-  for (const id of rest.slice(0, Math.max(0, EAGER_LIMIT - onScreen.length))) enqueue(id);
-  observeRest(rest.slice(Math.max(0, EAGER_LIMIT - onScreen.length)));
-  pumpCaptures();
-}
-
-function observeRest(ids) {
   observer?.disconnect();
-  if (ids.length === 0) {
-    observer = null;
-    return;
-  }
-  const pending = new Set(ids);
+  visibleQueue.clear();
   observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        observer.unobserve(entry.target);
         const id = Number(entry.target.dataset.tabId);
-        pending.delete(id);
-        enqueue(id, true);
+        if (entry.isIntersecting) visibleQueue.add(id);
+        else visibleQueue.delete(id);
       }
       pumpCaptures();
     },
-    { root: els.board, rootMargin: "300px" },
+    { root: els.board, rootMargin: "200px" },
   );
-  for (const card of els.board.querySelectorAll(".card")) {
-    if (pending.has(Number(card.dataset.tabId))) observer.observe(card);
+  for (const card of els.board.querySelectorAll(".card")) observer.observe(card);
+
+  backfillQueue.clear();
+  for (const id of state.tabsById.keys()) backfillQueue.add(id);
+  pumpCaptures();
+}
+
+function takeFrom(queue) {
+  for (const id of queue) {
+    queue.delete(id);
+    if (!thumbCache.has(id) && !inFlight.has(id) && !failed.has(id)) return id;
   }
+  return null;
+}
+
+// Visible cards are never subject to EAGER_LIMIT; the cap only throttles the
+// off-screen backfill.
+function nextCapture() {
+  const visible = takeFrom(visibleQueue);
+  if (visible != null) return visible;
+  if (thumbCache.size + inFlight.size >= EAGER_LIMIT) return null;
+  return takeFrom(backfillQueue);
 }
 
 function pumpCaptures() {
-  while (capturing < 3 && captureQueue.length) {
-    const id = captureQueue.shift();
+  while (capturing < 3) {
+    const id = nextCapture();
+    if (id == null) break;
     capturing++;
+    inFlight.add(id);
     captureThumb(id).finally(() => {
       capturing--;
-      queued.delete(id);
+      inFlight.delete(id);
+      if (!thumbCache.has(id)) failed.add(id);
       pumpCaptures();
-      if (capturing === 0 && captureQueue.length === 0) reportThumbProgress();
+      if (capturing === 0) reportThumbProgress();
     });
   }
 }
@@ -454,16 +450,12 @@ function reportThumbProgress() {
   if (!state.visual) return;
   const total = state.tabsById.size;
   const got = [...state.tabsById.keys()].filter((id) => thumbCache.has(id)).length;
-  const waiting = observer ? total - Math.min(total, EAGER_LIMIT) : 0;
-  if (waiting > 0) {
-    setBanner(`Captured ${got} thumbnails; the last ${waiting} load as you scroll.`);
-  } else if (got === total) {
-    setBanner(`Captured ${got} thumbnails.`);
-  } else {
-    setBanner(
-      `Captured ${got} of ${total} thumbnails; the rest are pages Firefox won't let an add-on read.`,
-    );
-  }
+  const blocked = [...state.tabsById.keys()].filter((id) => failed.has(id)).length;
+  const waiting = total - got - blocked;
+  const parts = [`Captured ${got} of ${total} thumbnails`];
+  if (blocked > 0) parts.push(`${blocked} are pages Firefox won't let an add-on read`);
+  if (waiting > 0) parts.push(`${waiting} load as you scroll`);
+  setBanner(`${parts.join("; ")}.`);
 }
 
 async function captureThumb(id) {
@@ -494,6 +486,11 @@ async function enableVisual() {
 
 function disableVisual() {
   state.visual = false;
+  observer?.disconnect();
+  observer = null;
+  visibleQueue.clear();
+  backfillQueue.clear();
+  setBanner("");
   render();
 }
 

@@ -6,18 +6,18 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(join(root, "manager.html"), "utf8");
 
 const DOMAINS = [
-  ["mail.google.com", "Inbox"],
-  ["docs.google.com", "Design doc"],
-  ["github.com", "pull request"],
-  ["github.com", "issue"],
-  ["en.wikipedia.org", "Rust (programming language)"],
-  ["doc.rust-lang.org", "Async Rust book"],
-  ["news.ycombinator.com", "Hacker News"],
-  ["stackoverflow.com", "how to async in rust"],
-  ["youtube.com", "Rust tutorial video"],
-  ["amazon.com", "shopping cart"],
-  ["reddit.com", "r/rust discussion"],
-  ["obscure-vendor.example", "invoice portal"],
+  ["mail.google.com", "Inbox", "/u/0/inbox"],
+  ["docs.google.com", "Design doc", "/document/d/abc/edit"],
+  ["github.com", "pull request", "/acme/web/pull"],
+  ["github.com", "issue", "/acme/web/issues"],
+  ["en.wikipedia.org", "Rust (programming language)", "/wiki/Rust_programming_language"],
+  ["doc.rust-lang.org", "Async Rust book", "/book/async-await"],
+  ["news.ycombinator.com", "Hacker News", "/item"],
+  ["stackoverflow.com", "how to async in rust", "/questions/async-await-rust"],
+  ["youtube.com", "Rust tutorial video", "/watch"],
+  ["amazon.com", "shopping cart", "/gp/cart/view"],
+  ["reddit.com", "r/rust discussion", "/r/rust/comments/async_traits"],
+  ["obscure-vendor.example", "invoice portal", "/billing/invoice/portal"],
 ];
 
 const tabs = [];
@@ -25,13 +25,12 @@ let id = 1;
 for (let w = 1; w <= 4; w++) {
   const perWindow = w === 1 ? 45 : 25;
   for (let i = 0; i < perWindow; i++) {
-    const [host, title] = DOMAINS[(id + w) % DOMAINS.length];
-    const path = id % 11 === 0 ? "/shared-page" : `/p/${id}`;
+    const [host, title, path] = DOMAINS[(id + w) % DOMAINS.length];
     tabs.push({
       id: id,
       windowId: w,
       index: i,
-      url: `https://${host}${path}`,
+      url: id % 11 === 0 ? `https://${host}/shared-page` : `https://${host}${path}?id=${id}`,
       title: `${title} #${id}`,
       favIconUrl: "",
     });

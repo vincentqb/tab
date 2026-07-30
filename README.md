@@ -2,7 +2,7 @@
 
 A Firefox add-on that opens a full-page tab manager in its own tab.
 
-![Purpose view](test/screenshots/03-purpose.png)
+![Title view](test/screenshots/04-title.png)
 
 ## Install
 
@@ -21,6 +21,21 @@ _contents_, rename the `.zip` to `.xpi`, and install it from `about:addons` →
 gear → _Install Add-on From File_. Release Firefox refuses unsigned add-ons
 whatever that setting says; for those, submit the add-on to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing.
+
+## Views
+
+Each groups the same tabs by a different part of them. Nothing moves in the
+browser until you click **Apply**.
+
+| Button  | Groups by                                                                  |
+| ------- | -------------------------------------------------------------------------- |
+| Current | The windows you already have                                               |
+| Domain  | The site, subdomains folded together (`mail.` + `docs.google.com`)         |
+| Path    | Words in the URL after the site, so `/billing/invoice` groups across sites |
+| Title   | Words in the page title, so one subject groups across unrelated sites      |
+
+Domain, Path and Title read disjoint parts of a tab, so the three disagree
+usefully. All of it runs locally.
 
 ## Development
 

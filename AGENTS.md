@@ -36,14 +36,21 @@ commit, use `SKIP=<hook-id> git commit`.
   glue in `manager.js`. Don't import `logic.js` into the background script.
 - Views return a uniform shape: `[{ label, tabs, windowId? }]`. `windowId` is set
   only by `groupByWindow`, which is what lets Apply treat that view as a no-op.
-- `smartGroups` is intent-based (what a tab is _for_) and deliberately separate
-  from `clusterBySimilarity` (token overlap). Add a new domain to `INTENT_RULES`,
-  don't widen the similarity threshold to fake it.
-- UI labels and internal names differ on purpose: the buttons read Current,
-  Domain, Purpose, Topic; the `data-view` values stay `window`, `domain`, `smart`,
-  `similarity`. Rename the label, not the function.
+- **One view per input.** Domain reads the host, Path the URL after it, Title the
+  page title — disjoint by design, which is why there's no view mixing them. A new
+  view needs a new input, not a blend of these.
+- `labelFor` names a column from the same tokens that grouped it. Never label from
+  the host in a Path or Title column, or the view impersonates Domain whenever a
+  cluster happens to be single-site.
+- Path and Title share `clusterByTokens`; only the tokenizer differs. It seeds
+  groups per domain before merging, which is what keeps it O(domains²) — per-tab
+  seeding measured 7.2s at 1000 tabs, versus ~5ms seeded.
 - Column drag reorders `state.columns` only — board sugar that must never issue a
   `browser.*` call. Card drag is the one that changes what Apply will do.
+- Thumbnail priority comes from a live `IntersectionObserver`, never a one-shot
+  `getBoundingClientRect` sweep: a card grows ~4x taller once it has a thumbnail,
+  so any single measurement prioritizes a layout the thumbnails then invalidate.
+  `EAGER_LIMIT` caps stored thumbnails, not attempts.
 - Saved sessions carry `{ version, groups: [{ label, tabs: [{ url, title }] }] }`
   and no browser ids; ids mean nothing in a later session. `parseSession` accepts
   looser shapes so a hand-edited file still imports, and keeps `http(s)` only.

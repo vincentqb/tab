@@ -5,8 +5,11 @@ import {
   findDuplicates,
   duplicateTabIds,
   domainKey,
-  tokenize,
-  clusterBySimilarity,
+  pathTokens,
+  titleTokens,
+  clusterByTokens,
+  groupByPath,
+  groupByTitle,
   groupByWindow,
   groupByDomain,
   sessionFromColumns,
@@ -14,8 +17,6 @@ import {
   isImportableUrl,
   SESSION_VERSION,
   planApply,
-  intentOf,
-  smartGroups,
 } from "../src/logic.js";
 
 test("canonicalizeUrl strips protocol, www, trailing slash, fragment", () => {
@@ -86,89 +87,127 @@ test("domainKey collapses subdomains to registrable domain", () => {
   assert.equal(domainKey("about:blank"), "");
 });
 
-test("tokenize drops stopwords, short tokens, and pure numbers", () => {
-  const tokens = tokenize({
-    url: "https://www.example.com/the/2024/rust-async-guide",
-    title: "The Rust Async Guide",
+test("pathTokens reads the URL after the host, dropping stopwords and numbers", () => {
+  const tokens = pathTokens({
+    url: "https://www.example.com/the/2024/rust-async-guide.html?q=tokio",
   });
   assert.ok(tokens.has("rust"));
   assert.ok(tokens.has("async"));
   assert.ok(tokens.has("guide"));
+  assert.ok(tokens.has("tokio"));
+  assert.ok(!tokens.has("example"), "host is not part of the path");
   assert.ok(!tokens.has("the"));
   assert.ok(!tokens.has("2024"));
-  assert.ok(!tokens.has("www"));
+  assert.ok(!tokens.has("html"));
 });
 
-test("clusterBySimilarity keeps same-domain tabs together", () => {
+test("pathTokens is empty for anything that is not http(s)", () => {
+  for (const url of ["about:blank", "about:config", "file:///tmp/x.txt", "", null]) {
+    assert.equal(pathTokens({ url }).size, 0, `expected no tokens for ${url}`);
+  }
+});
+
+test("titleTokens reads only the title", () => {
+  const tokens = titleTokens({
+    url: "https://github.com/acme/pull/9",
+    title: "The Rust Async Guide",
+  });
+  assert.deepEqual([...tokens].sort(), ["async", "guide", "rust"]);
+  assert.ok(!tokens.has("github"), "URL is not part of the title");
+});
+
+test("groupByPath ignores the host, so it can group across sites", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/billing/invoice/2024", title: "one" },
+    { id: 2, windowId: 1, url: "https://b.com/billing/invoice/2025", title: "two" },
+    { id: 3, windowId: 1, url: "https://c.com/watch", title: "three" },
+  ];
+  const cols = groupByPath(tabs);
+  const invoice = cols.find((c) => c.tabs.some((t) => t.id === 1));
+  assert.ok(
+    invoice.tabs.some((t) => t.id === 2),
+    "same path words merge across hosts",
+  );
+  assert.ok(!invoice.tabs.some((t) => t.id === 3));
+});
+
+test("groupByTitle ignores the URL, so unrelated sites with one subject merge", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/x", title: "Async Rust Tokio" },
+    { id: 2, windowId: 1, url: "https://b.com/y", title: "Async Rust Tokio" },
+    { id: 3, windowId: 1, url: "https://c.com/z", title: "Best pasta recipe" },
+  ];
+  const cols = groupByTitle(tabs);
+  const rust = cols.find((c) => c.tabs.some((t) => t.id === 1));
+  assert.ok(rust.tabs.some((t) => t.id === 2));
+  assert.ok(!rust.tabs.some((t) => t.id === 3));
+});
+
+test("clusterByTokens keeps same-domain tabs together", () => {
   const tabs = [
     { id: 1, windowId: 1, url: "https://mail.google.com", title: "Gmail" },
     { id: 2, windowId: 2, url: "https://docs.google.com", title: "Docs" },
     { id: 3, windowId: 1, url: "https://en.wikipedia.org/wiki/Rust", title: "Rust" },
   ];
-  const clusters = clusterBySimilarity(tabs);
-  const google = clusters.find((c) => c.label === "google.com");
-  assert.ok(google, "expected a google.com cluster");
+  const clusters = clusterByTokens(tabs, titleTokens);
+  const google = clusters.find((c) => c.tabs.some((t) => t.id === 1));
   assert.deepEqual(google.tabs.map((t) => t.id).sort(), [1, 2]);
+  assert.ok(!google.tabs.some((t) => t.id === 3));
 });
 
-test("clusterBySimilarity merges topically similar tabs across domains", () => {
+test("labels come from the grouping input, never the host", () => {
   const tabs = [
-    {
-      id: 1,
-      windowId: 1,
-      url: "https://doc.rust-lang.org/book/async.html",
-      title: "Async Rust Programming",
-    },
-    {
-      id: 2,
-      windowId: 2,
-      url: "https://tokio.rs/tokio/tutorial",
-      title: "Async Rust with Tokio runtime",
-    },
-    { id: 3, windowId: 1, url: "https://cooking.com/pasta", title: "Best pasta recipe" },
+    { id: 1, windowId: 1, url: "https://github.com/acme/billing/invoice", title: "Invoice one" },
+    { id: 2, windowId: 1, url: "https://github.com/acme/billing/invoice2", title: "Invoice two" },
   ];
-  const clusters = clusterBySimilarity(tabs, { threshold: 0.15 });
-  const rustCluster = clusters.find((c) => c.tabs.some((t) => t.id === 1));
   assert.ok(
-    rustCluster.tabs.some((t) => t.id === 2),
-    "rust tabs should merge",
+    groupByPath(tabs).every((c) => !c.label.includes(".")),
+    "path labels must not be hostnames",
   );
-  assert.ok(!rustCluster.tabs.some((t) => t.id === 3), "pasta stays separate");
+  assert.equal(groupByTitle(tabs)[0].label, "invoice");
 });
 
-test("clusterBySimilarity returns clusters largest-first and partitions all tabs", () => {
+test("clusterByTokens returns clusters largest-first and partitions all tabs", () => {
   const tabs = [
     { id: 1, windowId: 1, url: "https://a.com/1", title: "a" },
     { id: 2, windowId: 1, url: "https://a.com/2", title: "a" },
     { id: 3, windowId: 1, url: "https://a.com/3", title: "a" },
     { id: 4, windowId: 1, url: "https://b.com/1", title: "b" },
   ];
-  const clusters = clusterBySimilarity(tabs);
+  const clusters = clusterByTokens(tabs, titleTokens);
   assert.equal(clusters[0].tabs.length, 3);
   const total = clusters.reduce((n, c) => n + c.tabs.length, 0);
   assert.equal(total, tabs.length);
 });
 
 test("empty input yields empty clusters", () => {
-  assert.deepEqual(clusterBySimilarity([]), []);
+  assert.deepEqual(clusterByTokens([], titleTokens), []);
+  assert.deepEqual(groupByPath([]), []);
+  assert.deepEqual(groupByTitle([]), []);
 });
 
-test("clusterBySimilarity handles 100+ tabs quickly", () => {
+test("both token views handle 150 tabs quickly", () => {
   const domains = ["a.com", "b.com", "c.com", "d.com", "e.com"];
   const tabs = Array.from({ length: 150 }, (_, i) => ({
     id: i,
     windowId: (i % 3) + 1,
-    url: `https://${domains[i % domains.length]}/page${i}`,
-    title: `Page ${i}`,
+    url: `https://${domains[i % domains.length]}/topic${i % 7}/page${i}`,
+    title: `Topic ${i % 7} page ${i}`,
   }));
-  const start = process.hrtime.bigint();
-  const clusters = clusterBySimilarity(tabs);
-  const ms = Number(process.hrtime.bigint() - start) / 1e6;
-  assert.ok(ms < 500, `clustering 150 tabs took ${ms}ms`);
-  assert.equal(
-    clusters.reduce((n, c) => n + c.tabs.length, 0),
-    150,
-  );
+  for (const [name, fn] of [
+    ["groupByPath", groupByPath],
+    ["groupByTitle", groupByTitle],
+  ]) {
+    const start = process.hrtime.bigint();
+    const cols = fn(tabs);
+    const ms = Number(process.hrtime.bigint() - start) / 1e6;
+    assert.ok(ms < 500, `${name} on 150 tabs took ${ms}ms`);
+    assert.equal(
+      cols.reduce((n, c) => n + c.tabs.length, 0),
+      150,
+      `${name} must partition every tab`,
+    );
+  }
 });
 
 test("groupByWindow yields one column per window carrying windowId", () => {
@@ -323,55 +362,4 @@ test("planApply reuses leftover windows before creating new ones", () => {
   assert.equal(plan[0].targetWindowId, 10);
   assert.equal(plan[1].targetWindowId, 11, "reuses free window 11 instead of new");
   assert.ok(plan.every((p) => !p.isNew));
-});
-
-test("intentOf classifies tabs by what they are for", () => {
-  assert.equal(intentOf({ url: "https://github.com/foo/pull/1" }), "Work");
-  assert.equal(intentOf({ url: "https://mail.google.com/inbox" }), "Communication");
-  assert.equal(intentOf({ url: "https://docs.google.com/document/d/1" }), "Docs & Writing");
-  assert.equal(intentOf({ url: "https://en.wikipedia.org/wiki/Rust" }), "Reading");
-  assert.equal(intentOf({ url: "https://stackoverflow.com/questions/1" }), "Reference");
-  assert.equal(intentOf({ url: "https://youtube.com/watch?v=1" }), "Media");
-  assert.equal(intentOf({ url: "https://reddit.com/r/rust" }), "Social");
-  assert.equal(intentOf({ url: "about:config" }), "Browser");
-  assert.equal(intentOf({ url: "https://some-random-site.example/x" }), "");
-});
-
-test("smartGroups buckets by intent, not just token overlap", () => {
-  const tabs = [
-    { id: 1, windowId: 1, url: "https://github.com/a/pull/1", title: "PR" },
-    { id: 2, windowId: 1, url: "https://gitlab.com/b/merge_requests/2", title: "MR" },
-    { id: 3, windowId: 1, url: "https://youtube.com/watch?v=x", title: "Video" },
-    { id: 4, windowId: 1, url: "https://netflix.com/title/9", title: "Show" },
-  ];
-  const cols = smartGroups(tabs);
-  const work = cols.find((c) => c.label === "Work");
-  const media = cols.find((c) => c.label === "Media");
-  assert.deepEqual(work.tabs.map((t) => t.id).sort(), [1, 2]);
-  assert.deepEqual(media.tabs.map((t) => t.id).sort(), [3, 4]);
-});
-
-test("smartGroups organizes unknown tabs by similarity instead of a junk drawer", () => {
-  const tabs = [
-    { id: 1, windowId: 1, url: "https://github.com/a/pull/1", title: "PR" },
-    { id: 2, windowId: 1, url: "https://obscure-shop.example/cart", title: "Cart" },
-    { id: 3, windowId: 1, url: "https://obscure-shop.example/checkout", title: "Checkout" },
-  ];
-  const cols = smartGroups(tabs);
-  assert.ok(!cols.some((c) => c.label === "Other"), "no junk-drawer column");
-  const shop = cols.find((c) => c.tabs.some((t) => t.id === 2));
-  assert.deepEqual(shop.tabs.map((t) => t.id).sort(), [2, 3], "unknowns cluster together");
-});
-
-test("smartGroups partitions every tab exactly once", () => {
-  const tabs = Array.from({ length: 60 }, (_, i) => ({
-    id: i,
-    windowId: 1,
-    url: `https://${["github.com", "youtube.com", "weird.example"][i % 3]}/p/${i}`,
-    title: `T${i}`,
-  }));
-  const cols = smartGroups(tabs);
-  const ids = cols.flatMap((c) => c.tabs.map((t) => t.id)).sort((a, b) => a - b);
-  assert.equal(ids.length, 60);
-  assert.deepEqual(new Set(ids).size, 60);
 });

@@ -51,8 +51,8 @@ check("current view renders all 120 tabs", cards === 120, `${cards} cards`);
 check("current view has 4 columns", cols === 4, `${cols} columns`);
 const viewNames = await page.locator(".view-btn").allTextContents();
 check(
-  "views are named Current/Domain/Purpose/Topic",
-  viewNames.map((t) => t.trim()).join(",") === "Current,Domain,Purpose,Topic",
+  "views are named Current/Domain/Path/Title",
+  viewNames.map((t) => t.trim()).join(",") === "Current,Domain,Path,Title",
   viewNames.map((t) => t.trim()).join(","),
 );
 const stat = await page.locator("#stat").textContent();
@@ -67,27 +67,27 @@ check("domain view groups into domain columns", cols >= 5, `${cols} columns`);
 check("largest domain column is labeled", firstLabel.includes("."), firstLabel);
 await page.screenshot({ path: join(shots, "02-domain.png") });
 
-await page.click('[data-view="smart"]');
+await page.click('[data-view="path"]');
 await page.waitForTimeout(250);
-const smartLabels = await page.locator(".column-label").allTextContents();
-const smartCards = await page.locator(".card").count();
-check("purpose view preserves all tabs", smartCards === 120, `${smartCards} cards`);
-for (const expected of ["Work", "Communication", "Media", "Reading", "Reference", "Social"]) {
-  check(
-    `purpose view surfaces the ${expected} bucket`,
-    smartLabels.includes(expected),
-    smartLabels.join(", "),
-  );
-}
-await page.screenshot({ path: join(shots, "03-purpose.png") });
+const pathCols = await page.locator(".column").count();
+const pathCards = await page.locator(".card").count();
+const pathLabels = await page.locator(".column-label").allTextContents();
+check("path view preserves all tabs", pathCards === 120, `${pathCards} cards`);
+check("path view produces columns", pathCols >= 2, `${pathCols} columns`);
+check(
+  "path labels come from the URL, not the host",
+  pathLabels.every((l) => !l.includes(".")),
+  pathLabels.join(", "),
+);
+await page.screenshot({ path: join(shots, "03-path.png") });
 
-await page.click('[data-view="similarity"]');
-await page.waitForTimeout(200);
-const simCols = await page.locator(".column").count();
-const simCards = await page.locator(".card").count();
-check("topic view preserves all tabs", simCards === 120, `${simCards} cards`);
-check("topic view produces clusters", simCols >= 1, `${simCols} clusters`);
-await page.screenshot({ path: join(shots, "04-topic.png") });
+await page.click('[data-view="title"]');
+await page.waitForTimeout(250);
+const titleCols = await page.locator(".column").count();
+const titleCards = await page.locator(".card").count();
+check("title view preserves all tabs", titleCards === 120, `${titleCards} cards`);
+check("title view produces columns", titleCols >= 2, `${titleCols} columns`);
+await page.screenshot({ path: join(shots, "04-title.png") });
 
 await page.click('[data-view="window"]');
 await page.waitForTimeout(150);
@@ -239,48 +239,107 @@ const boardHasVisual = await page.evaluate(() =>
 check("visual toggle enables visual board mode", boardHasVisual);
 const capturedIds = () =>
   page.evaluate(() => window.__calls.filter((c) => c.name === "tabs.captureTab").map((c) => c.arg));
+
+// The harness makes every 17th tab throw, mimicking a page Firefox won't capture.
+const visibleWithoutThumb = () =>
+  page.evaluate(() => {
+    const vh = innerHeight;
+    const vw = innerWidth;
+    const missing = [];
+    let visible = 0;
+    for (const card of document.querySelectorAll(".card")) {
+      const r = card.getBoundingClientRect();
+      const list = card.closest(".tablist").getBoundingClientRect();
+      const onScreen =
+        r.bottom > 0 &&
+        r.top < vh &&
+        r.right > 0 &&
+        r.left < vw &&
+        r.bottom > list.top &&
+        r.top < list.bottom;
+      const id = Number(card.dataset.tabId);
+      if (!onScreen || id % 17 === 0) continue;
+      visible++;
+      const thumb = card.querySelector(".thumb");
+      if (!thumb || thumb.hidden || !thumb.src) missing.push(id);
+    }
+    return { visible, missing };
+  });
+
+let vis = await visibleWithoutThumb();
+check(
+  "every visible card has a thumbnail after the toggle",
+  vis.missing.length === 0 && vis.visible > 0,
+  `${vis.visible} visible, missing ${JSON.stringify(vis.missing)}`,
+);
+
+// The cap counts stored thumbnails, not attempts, so blocked pages don't consume
+// a slot and the attempt count can exceed it.
 const eager = await capturedIds();
+const storedEager = await page.locator(".thumb:not([hidden])").count();
 check(
-  "visual eagerly captures the first 100 tabs, not the whole board",
-  eager.length === 100 && total > 100,
-  `${eager.length} captures for ${total} cards`,
+  "the off-screen backfill stops at 100 stored thumbnails",
+  storedEager <= 100 && eager.length < total,
+  `${storedEager} stored from ${eager.length} attempts, ${total} cards`,
+);
+check(
+  "no tab is captured twice",
+  new Set(eager).size === eager.length,
+  `${eager.length} calls, ${new Set(eager).size} distinct`,
 );
 
-const firstCaptures = eager.slice(0, visibleIds.length);
-check(
-  "on-screen cards are captured before the off-screen ones",
-  visibleIds.length > 0 && visibleIds.every((id) => firstCaptures.includes(id)),
-  `${visibleIds.length} visible, all in the first ${firstCaptures.length} captures`,
-);
+for (const [label, scroll] of [
+  [
+    "a column is scrolled",
+    () =>
+      page
+        .locator(".column")
+        .nth(0)
+        .locator(".tablist")
+        .evaluate((el) => (el.scrollTop = 99999)),
+  ],
+  [
+    "the board is scrolled sideways",
+    () => page.evaluate(() => (document.getElementById("board").scrollLeft = 99999)),
+  ],
+  [
+    "the last column is scrolled",
+    () =>
+      page
+        .locator(".column")
+        .last()
+        .locator(".tablist")
+        .evaluate((el) => (el.scrollTop = 99999)),
+  ],
+]) {
+  await scroll();
+  await page.waitForTimeout(1200);
+  vis = await visibleWithoutThumb();
+  check(
+    `every visible card has a thumbnail after ${label}`,
+    vis.missing.length === 0 && vis.visible > 0,
+    `${vis.visible} visible, missing ${JSON.stringify(vis.missing)}`,
+  );
+}
 
-const shownThumbs = await page.locator(".thumb:not([hidden])").count();
-check(
-  "captured thumbnails are shown on their cards",
-  shownThumbs > 80 && shownThumbs <= 100,
-  `${shownThumbs} shown (privileged pages can't capture)`,
-);
-const visualBanner = await page.locator("#banner").textContent();
-check(
-  "visual says the tail loads on scroll",
-  /load as you scroll/.test(visualBanner),
-  visualBanner.trim(),
-);
-await page.screenshot({ path: join(shots, "06-visual.png") });
-
-const lastColumn = page.locator(".column").last().locator(".tablist");
-await lastColumn.evaluate((el) => (el.scrollTop = el.scrollHeight));
-await page.waitForTimeout(1500);
 const afterScroll = await capturedIds();
 check(
-  "scrolling captures the remaining tabs lazily",
+  "scrolling captures more tabs lazily",
   afterScroll.length > eager.length,
   `${eager.length} -> ${afterScroll.length} captures`,
 );
 check(
-  "lazy captures are not re-requests of the eager ones",
+  "lazy captures never re-request a tab",
   new Set(afterScroll).size === afterScroll.length,
-  `${afterScroll.length} calls, ${new Set(afterScroll).size} distinct ids`,
+  `${afterScroll.length} calls, ${new Set(afterScroll).size} distinct`,
 );
+const visualBanner = await page.locator("#banner").textContent();
+check(
+  "the banner accounts for captured, blocked, and pending",
+  /Captured \d+ of \d+ thumbnails/.test(visualBanner),
+  visualBanner.trim(),
+);
+await page.screenshot({ path: join(shots, "06-visual.png") });
 
 check("no console/page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 
