@@ -22,36 +22,6 @@ gear → _Install Add-on From File_. Release Firefox refuses unsigned add-ons
 whatever that setting says; for those, submit the add-on to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing.
 
-## Views
-
-Each groups the same tabs by a different part of them. Nothing moves in the
-browser until you click **Apply**.
-
-| Button  | Groups by                                                                  |
-| ------- | -------------------------------------------------------------------------- |
-| Current | The windows you already have                                               |
-| Domain  | The site, subdomains folded together (`mail.` + `docs.google.com`)         |
-| Path    | Words in the URL after the site, so `/billing/invoice` groups across sites |
-| Title   | Words in the page title, so one subject groups across unrelated sites      |
-
-Domain, Path and Title read disjoint parts of a tab, so the three disagree
-usefully. All of it runs locally.
-
-## Search
-
-Type to hide every tab that doesn't match. Matching is fuzzy against the title,
-host, and URL path, so `invioce`, `githb` and `gtihub` all find what you meant.
-Several words narrow rather than widen: `rust book` needs both.
-
-Press **Enter** to bank the matches as their own column, labeled with your query.
-The box clears, so the next search groups whatever the last one left behind —
-search and Enter again to build up as many groups as you want. Each keeps its
-tabs, so a later search never steals from an earlier one.
-
-Search columns are outlined in blue; the `×` on one ungroups it. Switching view
-regroups only the ungrouped tabs, leaving your searches alone. **Apply** moves
-each search group into its own window. **Escape** drops them all.
-
 ## Development
 
 ```sh
