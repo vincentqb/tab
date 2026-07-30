@@ -57,7 +57,7 @@ check(
 );
 const stat = await page.locator("#stat").textContent();
 check("stat line reports totals", /120 tabs/.test(stat), stat.trim());
-await page.screenshot({ path: join(shots, "01-window.png") });
+await page.screenshot({ path: join(shots, "01-current.png") });
 
 await page.click('[data-view="domain"]');
 await page.waitForTimeout(150);
@@ -79,7 +79,7 @@ for (const expected of ["Work", "Communication", "Media", "Reading", "Reference"
     smartLabels.join(", "),
   );
 }
-await page.screenshot({ path: join(shots, "03-smart.png") });
+await page.screenshot({ path: join(shots, "03-purpose.png") });
 
 await page.click('[data-view="similarity"]');
 await page.waitForTimeout(200);
@@ -87,7 +87,7 @@ const simCols = await page.locator(".column").count();
 const simCards = await page.locator(".card").count();
 check("topic view preserves all tabs", simCards === 120, `${simCards} cards`);
 check("topic view produces clusters", simCols >= 1, `${simCols} clusters`);
-await page.screenshot({ path: join(shots, "04-similarity.png") });
+await page.screenshot({ path: join(shots, "04-topic.png") });
 
 await page.click('[data-view="window"]');
 await page.waitForTimeout(150);

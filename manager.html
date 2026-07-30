@@ -48,7 +48,9 @@
           <input id="visual-toggle" type="checkbox" />
           <span>Visual</span>
         </label>
-        <button id="dedupe-btn" class="action-btn">Remove duplicates</button>
+        <button id="dedupe-btn" class="action-btn" title="Close every duplicate but the leftmost">
+          Dedupe
+        </button>
         <button
           id="save-btn"
           class="action-btn"
@@ -64,7 +66,13 @@
           Import
         </button>
         <input id="import-file" type="file" accept="application/json,.json" hidden />
-        <button id="apply-btn" class="action-btn primary">Apply layout</button>
+        <button
+          id="apply-btn"
+          class="action-btn primary"
+          title="Rearrange your real Firefox windows to match the board"
+        >
+          Apply
+        </button>
         <button id="refresh-btn" class="action-btn" title="Reload tabs from the browser">
           Refresh
         </button>

@@ -1,120 +1,89 @@
 # Tab Organizer
 
-A Firefox add-on that opens a full-page tab manager in its own tab. See every
-open tab across every window, regroup them by window, site, purpose or topic,
-drag tabs between windows, remove duplicates, save the arrangement to a file, and
-**apply** it back to the browser.
+A Firefox add-on that opens a full-page tab manager in its own tab.
 
-![Purpose view](test/screenshots/03-smart.png)
+![Purpose view](test/screenshots/03-purpose.png)
 
-## Why it's an add-on, not just a webpage
-
-A normal web page can't read or move your browser tabs — only a WebExtension can
-(`browser.tabs` / `browser.windows`). So this is a small Firefox add-on whose UI
-_is_ a webpage: click the toolbar button and it opens the manager in a regular
-tab.
-
-## Install (temporary — no signing needed)
+## Install
 
 Temporary add-ons load instantly and stay until you restart Firefox.
 
-1. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
+1. Open `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on…**.
-3. Select the `manifest.json` file in this folder.
-4. A **Tab Organizer** button appears in the toolbar. Click it to open the
-   manager.
+3. Select `manifest.json` in this folder.
+4. Click the **Tab Organizer** toolbar button to open the manager.
 
-To reload after editing the code, click **Reload** next to the add-on on that
-same `about:debugging` page.
+After editing the code, click **Reload** next to the add-on on that same page.
 
-### Install permanently (optional)
+To keep it across restarts on Developer Edition, Nightly, or ESR: set
+`xpinstall.signatures.required` to `false` in `about:config`, zip this folder's
+_contents_, rename the `.zip` to `.xpi`, and install it from `about:addons` →
+gear → _Install Add-on From File_. Release Firefox refuses unsigned add-ons
+whatever that setting says; for those, submit the add-on to
+[addons.mozilla.org](https://addons.mozilla.org/developers/) for signing.
 
-Temporary add-ons vanish on restart. To keep it:
+## Views
 
-- **Firefox Developer Edition / Nightly / ESR:** set
-  `xpinstall.signatures.required` to `false` in `about:config`, then zip this
-  folder's _contents_ (not the folder itself), rename the `.zip` to `.xpi`, and
-  install via `about:addons` → gear → _Install Add-on From File_. Release Firefox
-  refuses unsigned add-ons regardless of this setting.
-- **Any Firefox:** submit the packaged add-on to
-  [addons.mozilla.org](https://addons.mozilla.org/developers/) for signing.
+Each button regroups the same tabs. Nothing moves in the browser until you click
+**Apply**.
 
-## Using it
+| Button  | Grouping                                                                                                                                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current | Your windows as they are right now. Applying it changes nothing                                                                                                                                                       |
+| Domain  | One column per site, subdomains folded together (`mail.` + `docs.google.com` → `google.com`)                                                                                                                          |
+| Purpose | Named buckets — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Gmail, Slack and Outlook share a column even though they share no words. Sites outside the list fall through to Topic |
+| Topic   | Clusters tabs whose titles and URLs share words, so a Rust doc, a Rust Stack Overflow answer and a Rust video group across sites. Labels and cluster count depend on what you have open                               |
 
-**Views.** Each button regroups the same tabs; nothing moves in the browser until
-you click _Apply layout_.
+## Tabs
 
-| View    | Grouping                                                                                                                                                                                                                                       |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Current | Your windows as they are right now. Applying it is a no-op                                                                                                                                                                                     |
-| Domain  | One column per site, subdomains folded together (`mail.` + `docs.google.com`)                                                                                                                                                                  |
-| Purpose | Named buckets by what a tab is for — Work, Communication, Docs & Writing, Reading, Reference, Media, Social, Search. Gmail, Slack and Outlook land in one column even though they share no words. Sites outside the list fall through to Topic |
-| Topic   | Clusters tabs whose titles and URLs share words, so a rust doc, a rust Stack Overflow answer and a rust video group across sites. Labels and cluster count depend on what you have open                                                        |
+Each card shows favicon, title, and host. Double-click it to jump to that tab;
+the `×` closes it.
 
-Purpose reads a list of ~50 host patterns in `src/logic.js`; Topic computes word
-overlap (Jaccard ≥ 0.26) and merges the closest pair until nothing else matches.
-Both run locally — no network, no model.
+Drag a card to another column to regroup it, or within a column to reorder it.
+Drag a column header to move the whole column — that rearranges the board only
+and never touches your tabs.
 
-**Each tab** shows favicon, title, and host. Double-click a card to jump to that
-tab; the `×` closes it.
+## Buttons
 
-**Visual** adds a page thumbnail to each card. Everything on screen is captured
-first, then the queue fills to 100 tabs whether or not they're visible; past that
-the rest load as you scroll. Three captures run at a time so a hundred-tab board
-stays responsive. Firefox blocks capture on `about:` and add-on pages, so those
-cards keep the favicon, and the banner says how many it got. The toggle asks for
-content-access permission only when you turn it on, so a default install stays
-minimal-permission.
+**Visual** adds a page thumbnail to each card. On-screen cards are captured
+first, then the queue fills to 100 tabs; past that they load as you scroll.
+Firefox blocks capture on `about:` and add-on pages, so those cards keep their
+favicon. The toggle asks for content-access permission only when you turn it on,
+so a default install stays minimal-permission.
 
-**Remove duplicates** finds tabs with the same URL — ignoring `www.`, trailing
-slashes, fragments, and tracking params like `utm_*` — keeps the leftmost of each
-set and closes the rest. Duplicates are flagged with a red edge before you click.
+**Dedupe** closes tabs with a repeated URL, keeping the leftmost of each set.
+`www.`, trailing slashes, fragments, and tracking params like `utm_*` are ignored
+when comparing. Duplicates carry a red edge before you click.
 
-**Drag** a card into another column to regroup it, or within a column to reorder
-it. Drag a column header to move the whole column; that rearranges the board
-only and never touches your tabs.
+**Save** writes the board to a JSON file, one group per column.
 
-**Save** writes the current grouping to a JSON file, one group per column.
-**Import** reads that file back and opens each group as a new window, leaving
-your existing windows alone. Import keeps `http(s)` URLs only — Firefox won't let
-an add-on reopen `about:` or `file:` pages. Imported duplicates are yours to
-clear with **Remove duplicates**.
+**Import** reads that file back, opening each group as a new window and leaving
+your current windows alone. Only `http(s)` URLs restore — Firefox won't let an
+add-on reopen `about:` or `file:` pages. Clear any duplicates it brings in with
+**Dedupe**.
 
-**Apply layout** turns the columns into real Firefox windows. A column reuses the
-window that already holds most of its tabs, so the Current view applies as a
-no-op; leftover columns take the remaining windows, then spill into new ones. The
-window count follows the column count — Firefox closes a window when its last tab
-moves out, so grouping 4 windows into 2 columns leaves you with 2 windows.
+**Apply** rearranges your real windows to match the board. A column reuses the
+window already holding most of its tabs, so Current applies as a no-op; leftover
+columns take the remaining windows, then spill into new ones. The window count
+follows the column count, since Firefox closes a window when its last tab leaves.
+
+**Refresh** reloads the tab list from the browser.
 
 ## Development
 
 ```sh
-npm test        # unit tests for the pure logic
-npm run test:ui # optional: drives the real UI in a headless browser
+npm test         # unit tests for the pure logic
+npm run test:ui  # drives the real UI headless, and regenerates the screenshots
 ```
 
-All organization logic lives in `src/logic.js` as pure, browser-free functions,
-so it's unit-tested directly under `node --test`. The UI (`src/manager.js`) is
-the only part that touches the WebExtension APIs.
+`npm run test:ui` needs Playwright and a browser binary. It builds
+`_harness.html` (the real page wired to a mocked `browser` API seeded with 120
+fake tabs), drives it, and writes `test/screenshots/`, including the image at the
+top of this file. Point `PW_MODULE` at an installed `playwright/index.mjs` if it
+isn't resolvable locally:
 
-`npm run test:ui` builds `_harness.html` — the real page wired to a mocked
-`browser` API seeded with 120 fake tabs — and drives it with Playwright to check
-rendering, every view, dedupe, drag-and-drop, save, import, thumbnails, and
-apply. It needs Playwright and a browser binary; skip it if you don't have them.
-
-## Layout
-
-```
-manifest.json      add-on manifest (MV3, Firefox)
-manager.html/css   the full-page UI
-src/background.js   opens the manager when the toolbar button is clicked
-src/manager.js      UI: rendering, drag/drop, actions, save/import, thumbnails
-src/logic.js        pure logic: canonicalize, dedupe, views, intent, clustering, session, apply planner
-test/               unit tests + the UI harness/driver
+```sh
+PW_MODULE=/path/to/node_modules/playwright/index.mjs npm run test:ui
 ```
 
-## Style
-
-Clean, professional, minimal — card columns, one blue accent, red reserved for
-destructive actions and duplicate flags. Colors live as CSS custom properties at
-the top of `manager.css` and follow the system light/dark preference.
+See `AGENTS.md` for conventions and the pure/UI split.
