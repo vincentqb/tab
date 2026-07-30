@@ -12,6 +12,11 @@ import {
   groupByTitle,
   groupByWindow,
   groupByDomain,
+  searchFields,
+  parseQuery,
+  matchesQuery,
+  filterTabs,
+  groupByMatch,
   sessionFromColumns,
   parseSession,
   isImportableUrl,
@@ -208,6 +213,132 @@ test("both token views handle 150 tabs quickly", () => {
       `${name} must partition every tab`,
     );
   }
+});
+
+test("searchFields exposes title, host, path, and their parts", () => {
+  const fields = searchFields({
+    url: "https://mail.google.com/u/0/inbox",
+    title: "Inbox (42)",
+  });
+  for (const expected of ["inbox (42)", "inbox", "mail.google.com", "google", "/u/0/inbox"]) {
+    assert.ok(fields.includes(expected), `expected field ${expected} in ${fields.join("|")}`);
+  }
+});
+
+test("parseQuery lowercases and splits on whitespace", () => {
+  assert.deepEqual(parseQuery("  Rust   Book "), ["rust", "book"]);
+  assert.deepEqual(parseQuery(""), []);
+  assert.deepEqual(parseQuery(null), []);
+});
+
+test("an empty query matches everything", () => {
+  const tabs = [{ id: 1, url: "https://a.com", title: "A" }];
+  assert.deepEqual(filterTabs(tabs, ""), tabs);
+  assert.deepEqual(filterTabs(tabs, "   "), tabs);
+  assert.ok(matchesQuery(tabs[0], []));
+});
+
+test("search matches on title, host, and path", () => {
+  const tab = { id: 1, url: "https://obscure-vendor.example/billing/invoice", title: "Portal" };
+  for (const query of ["portal", "vendor", "invoice", "billing"]) {
+    assert.ok(matchesQuery(tab, parseQuery(query)), `expected ${query} to match`);
+  }
+});
+
+test("search tolerates every common typo class", () => {
+  const tab = { id: 1, url: "https://vendor.example/billing/invoice", title: "invoice portal" };
+  for (const [query, kind] of [
+    ["invoice", "exact"],
+    ["invoic", "truncated"],
+    ["invoce", "dropped letter"],
+    ["invioce", "transposed"],
+    ["inovice", "transposed further in"],
+    ["invoicce", "doubled letter"],
+    ["invoise", "substituted letter"],
+  ]) {
+    assert.ok(matchesQuery(tab, parseQuery(query)), `${kind}: ${query} should match`);
+  }
+});
+
+test("fuzzy matching does not reach into unrelated words", () => {
+  const rustBook = { id: 1, url: "https://doc.rust-lang.org/book/async", title: "Async Rust book" };
+  // "cart" is a scattered subsequence of "AsyncRusTbook"; the span cap blocks it.
+  assert.equal(matchesQuery(rustBook, parseQuery("cart")), false);
+  // "kube" is one edit from the "tube" inside "youtube"; the word-start anchor
+  // blocks it.
+  const video = { id: 2, url: "https://youtube.com/watch", title: "Rust tutorial video" };
+  assert.equal(matchesQuery(video, parseQuery("kube")), false);
+  const kubernetes = { id: 3, url: "https://kubernetes.io/docs", title: "Kubernetes" };
+  assert.ok(matchesQuery(kubernetes, parseQuery("kube")), "a real prefix still matches");
+});
+
+test("filtering 400 tabs stays fast enough to run on every keystroke", () => {
+  const tabs = Array.from({ length: 400 }, (_, i) => ({
+    id: i,
+    windowId: 1,
+    url: `https://site${i % 20}.com/section/${i}/detail-page-${i}`,
+    title: `A reasonably long page title number ${i}`,
+  }));
+  const start = process.hrtime.bigint();
+  filterTabs(tabs, "invoice");
+  const ms = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(ms < 100, `filtering 400 tabs took ${ms}ms`);
+});
+
+test("short queries are substring-only, so they cannot fuzzy-match noise", () => {
+  const tab = { id: 1, url: "https://a.com/x", title: "Async Rust book" };
+  assert.ok(matchesQuery(tab, parseQuery("rus")));
+  assert.equal(matchesQuery(tab, parseQuery("ark")), false);
+});
+
+test("every term must match, so more words narrow the result", () => {
+  const tabs = [
+    { id: 1, url: "https://doc.rust-lang.org/book/async", title: "Async Rust book" },
+    { id: 2, url: "https://youtube.com/watch", title: "Rust tutorial video" },
+  ];
+  assert.deepEqual(
+    filterTabs(tabs, "rust").map((t) => t.id),
+    [1, 2],
+  );
+  assert.deepEqual(
+    filterTabs(tabs, "rust book").map((t) => t.id),
+    [1],
+  );
+});
+
+test("groupByMatch puts matches in a leading column and regroups the rest", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/invoice", title: "Invoice" },
+    { id: 2, windowId: 1, url: "https://b.com/invoice", title: "Bill" },
+    { id: 3, windowId: 2, url: "https://c.com/x", title: "Unrelated" },
+  ];
+  const cols = groupByMatch(tabs, "invoice", groupByWindow);
+  assert.equal(cols[0].label, "invoice");
+  assert.deepEqual(
+    cols[0].tabs.map((t) => t.id),
+    [1, 2],
+  );
+  assert.equal(cols[0].windowId, undefined, "the match column must not claim a window");
+  const rest = cols.slice(1).flatMap((c) => c.tabs.map((t) => t.id));
+  assert.deepEqual(rest, [3]);
+});
+
+test("groupByMatch falls back to the plain view when nothing matches", () => {
+  const tabs = [{ id: 1, windowId: 1, url: "https://a.com", title: "A" }];
+  assert.deepEqual(groupByMatch(tabs, "zzz", groupByWindow), groupByWindow(tabs));
+  assert.deepEqual(groupByMatch(tabs, "", groupByWindow), groupByWindow(tabs));
+});
+
+test("groupByMatch keeps every tab exactly once", () => {
+  const tabs = Array.from({ length: 30 }, (_, i) => ({
+    id: i,
+    windowId: (i % 3) + 1,
+    url: `https://site${i % 5}.com/page/${i}`,
+    title: i % 4 === 0 ? `Invoice ${i}` : `Page ${i}`,
+  }));
+  const ids = groupByMatch(tabs, "invoice", groupByWindow).flatMap((c) => c.tabs.map((t) => t.id));
+  assert.equal(ids.length, tabs.length);
+  assert.equal(new Set(ids).size, tabs.length);
 });
 
 test("groupByWindow yields one column per window carrying windowId", () => {

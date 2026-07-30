@@ -202,6 +202,128 @@ export function groupByTitle(tabs) {
   return clusterByTokens(tabs, titleTokens);
 }
 
+const FUZZY_SPAN = 1.5;
+const MIN_FUZZY_LENGTH = 4;
+
+export function searchFields(tab) {
+  const fields = [];
+  const push = (text) => {
+    const value = String(text ?? "")
+      .toLowerCase()
+      .trim();
+    if (value) fields.push(value);
+  };
+  push(tab.title);
+  for (const word of String(tab.title ?? "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)) {
+    push(word);
+  }
+  try {
+    const parsed = new URL(tab.url);
+    const host = parsed.host.replace(/^www\./, "");
+    push(host);
+    push(parsed.pathname);
+    for (const label of host.split(".")) push(label);
+    for (const segment of parsed.pathname.split("/")) push(segment);
+    push(parsed.search);
+  } catch {
+    push(tab.url);
+  }
+  return fields;
+}
+
+// Ordered-subsequence match, but only when the letters land within 1.5x the
+// query length. Unbounded subsequence matches "cart" against "AsyncRusTbook";
+// the span cap is what keeps a typo tolerance from becoming noise.
+function subsequenceHit(term, field) {
+  let at = 0;
+  let first = -1;
+  for (const ch of term) {
+    const i = field.indexOf(ch, at);
+    if (i < 0) return false;
+    if (first < 0) first = i;
+    at = i + 1;
+  }
+  return at - first <= Math.ceil(term.length * FUZZY_SPAN);
+}
+
+// Subsequence matching is order-preserving, so it misses a transposition —
+// "invioce" for "invoice" — which is the most common typo there is. This allows
+// one edit against any same-length window of the field: substitution, doubling,
+// and transposition all become one edit, while staying anchored so it can't
+// drift into unrelated text.
+// Anchored at a word start: a typo'd query should begin where a word begins.
+// Scanning every offset instead would match "kube" inside "youtube".
+function withinOneEdit(term, field) {
+  const span = term.length;
+  for (let start = 0; start + span - 1 <= field.length; start++) {
+    if (start > 0 && /[a-z0-9]/.test(field[start - 1])) continue;
+    for (const width of [span - 1, span, span + 1]) {
+      if (width <= 0 || start + width > field.length) continue;
+      if (editDistanceWithin1(term, field.slice(start, start + width))) return true;
+    }
+  }
+  return false;
+}
+
+// One Damerau-Levenshtein edit: substitution, insertion, deletion, or a swap of
+// two adjacent characters. Plain Levenshtein would score a transposition as two
+// and reject the typo this exists to catch.
+function editDistanceWithin1(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i === a.length && i === b.length) return true;
+
+  if (a.length === b.length) {
+    const restEqual = a.slice(i + 1) === b.slice(i + 1);
+    if (restEqual) return true;
+    return a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+  }
+  const [longer, shorter] = a.length > b.length ? [a, b] : [b, a];
+  return longer.slice(i + 1) === shorter.slice(i);
+}
+
+function fuzzyHit(term, field) {
+  if (field.includes(term)) return true;
+  if (term.length < MIN_FUZZY_LENGTH) return false;
+  return subsequenceHit(term, field) || withinOneEdit(term, field);
+}
+
+export function parseQuery(query) {
+  return String(query ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+// Every term must hit some field, so extra words narrow rather than widen.
+export function matchesQuery(tab, terms) {
+  if (terms.length === 0) return true;
+  const fields = searchFields(tab);
+  return terms.every((term) => fields.some((field) => fuzzyHit(term, field)));
+}
+
+export function filterTabs(tabs, query) {
+  const terms = parseQuery(query);
+  if (terms.length === 0) return tabs;
+  return tabs.filter((tab) => matchesQuery(tab, terms));
+}
+
+// One column of everything the query matches, so Apply can gather it into a
+// single window. Non-matching tabs keep their existing grouping.
+export function groupByMatch(tabs, query, rest) {
+  const terms = parseQuery(query);
+  if (terms.length === 0) return rest(tabs);
+  const matched = [];
+  const others = [];
+  for (const tab of tabs) (matchesQuery(tab, terms) ? matched : others).push(tab);
+  if (matched.length === 0) return rest(tabs);
+  return [{ label: query.trim(), tabs: matched }, ...rest(others)];
+}
+
 export function groupByWindow(tabs) {
   const byWindow = new Map();
   for (const tab of tabs) {

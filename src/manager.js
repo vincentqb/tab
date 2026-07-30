@@ -8,6 +8,9 @@ import {
   domainKey,
   sessionFromColumns,
   parseSession,
+  filterTabs,
+  groupByMatch,
+  parseQuery,
 } from "./logic.js";
 
 const MANAGER_URL = browser.runtime.getURL("manager.html");
@@ -24,6 +27,8 @@ const state = {
   columns: [],
   view: "window",
   visual: false,
+  query: "",
+  grouped: false,
 };
 
 const els = {
@@ -32,6 +37,7 @@ const els = {
   banner: document.getElementById("banner"),
   visualToggle: document.getElementById("visual-toggle"),
   importFile: document.getElementById("import-file"),
+  search: document.getElementById("search"),
   columnTpl: document.getElementById("column-tpl"),
   cardTpl: document.getElementById("card-tpl"),
 };
@@ -71,13 +77,20 @@ function toColumns(groups) {
   }));
 }
 
+function groupTabs(tabs) {
+  if (state.view === "domain") return groupByDomain(tabs);
+  if (state.view === "path") return groupByPath(tabs);
+  if (state.view === "title") return groupByTitle(tabs);
+  return groupByWindow(tabs);
+}
+
 function rebuildColumns() {
-  const tabs = [...state.tabsById.values()];
-  let groups;
-  if (state.view === "domain") groups = groupByDomain(tabs);
-  else if (state.view === "path") groups = groupByPath(tabs);
-  else if (state.view === "title") groups = groupByTitle(tabs);
-  else groups = groupByWindow(tabs);
+  const all = [...state.tabsById.values()];
+  // Grouped search keeps the non-matching tabs on the board so Apply can move
+  // the matches out; plain search hides everything else.
+  const groups = state.grouped
+    ? groupByMatch(all, state.query, groupTabs)
+    : groupTabs(filterTabs(all, state.query));
   state.columns = toColumns(groups);
   render();
 }
@@ -151,9 +164,11 @@ function safeHost(url) {
 
 function updateStats(dupCount) {
   const total = state.tabsById.size;
+  const shown = state.columns.reduce((n, c) => n + c.tabIds.length, 0);
   const wins = new Set([...state.tabsById.values()].map((t) => t.windowId)).size;
   const dupPart = dupCount ? ` · ${dupCount} duplicate${dupCount > 1 ? "s" : ""}` : "";
-  els.stat.textContent = `${total} tabs · ${wins} window${wins > 1 ? "s" : ""} · ${state.columns.length} columns${dupPart}`;
+  const tabPart = shown === total ? `${total} tabs` : `${shown} of ${total} tabs`;
+  els.stat.textContent = `${tabPart} · ${wins} window${wins > 1 ? "s" : ""} · ${state.columns.length} columns${dupPart}`;
 }
 
 function setBanner(text, isError = false) {
@@ -522,6 +537,35 @@ function selectView(view) {
   rebuildColumns();
 }
 
+function setQuery(query, { grouped = false } = {}) {
+  state.query = query;
+  state.grouped = grouped && parseQuery(query).length > 0;
+  els.search.classList.toggle("grouped", state.grouped);
+  rebuildColumns();
+  reportSearch();
+}
+
+function reportSearch() {
+  const terms = parseQuery(state.query);
+  if (terms.length === 0) {
+    setBanner("");
+    return;
+  }
+  const shown = state.columns.reduce((n, c) => n + c.tabIds.length, 0);
+  if (state.grouped) {
+    const column = state.columns[0];
+    setBanner(
+      `Grouped ${column.tabIds.length} match${column.tabIds.length === 1 ? "" : "es"} for “${state.query.trim()}” into one column. Apply moves them to their own window.`,
+    );
+    return;
+  }
+  if (shown === 0) {
+    setBanner(`No tabs match “${state.query.trim()}”.`);
+    return;
+  }
+  setBanner(`${shown} tab${shown === 1 ? "" : "s"} match; press Enter to group them.`);
+}
+
 function init() {
   document.querySelectorAll(".view-btn").forEach((btn) => {
     btn.addEventListener("click", () => selectView(btn.dataset.view));
@@ -529,6 +573,14 @@ function init() {
   els.visualToggle.addEventListener("change", (e) => {
     if (e.target.checked) enableVisual();
     else disableVisual();
+  });
+  els.search.addEventListener("input", (e) => setQuery(e.target.value));
+  els.search.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") setQuery(els.search.value, { grouped: true });
+    else if (e.key === "Escape") {
+      els.search.value = "";
+      setQuery("");
+    }
   });
   document.getElementById("dedupe-btn").addEventListener("click", removeDuplicates);
   document.getElementById("save-btn").addEventListener("click", saveSession);

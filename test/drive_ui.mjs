@@ -91,6 +91,106 @@ await page.screenshot({ path: join(shots, "04-title.png") });
 
 await page.click('[data-view="window"]');
 await page.waitForTimeout(150);
+
+await page.fill("#search", "invoice");
+await page.waitForTimeout(250);
+const searchCards = await page.locator(".card").count();
+const searchTitles = await page.locator(".card-title").allTextContents();
+check(
+  "search hides tabs that do not match",
+  searchCards > 0 && searchCards < 120,
+  `${searchCards} of 120 cards`,
+);
+check(
+  "every visible card matches the query",
+  searchTitles.every((x) => /invoice/i.test(x)),
+  searchTitles.slice(0, 3).join(" | "),
+);
+const searchStat = await page.locator("#stat").textContent();
+check(
+  "the stat line reports the filtered count",
+  /of 120 tabs/.test(searchStat),
+  searchStat.trim(),
+);
+
+await page.fill("#search", "invioce");
+await page.waitForTimeout(250);
+const typoCards = await page.locator(".card").count();
+check(
+  "a transposed-letter query still finds the tabs",
+  typoCards === searchCards,
+  `${typoCards} cards for a typo vs ${searchCards} exact`,
+);
+
+await page.fill("#search", "zzzznothing");
+await page.waitForTimeout(250);
+const emptyCards = await page.locator(".card").count();
+const emptyBanner = await page.locator("#banner").textContent();
+check("a query with no matches empties the board", emptyCards === 0, `${emptyCards} cards`);
+check("a query with no matches says so", /No tabs match/.test(emptyBanner), emptyBanner.trim());
+
+await page.fill("#search", "invoice");
+await page.waitForTimeout(200);
+await page.evaluate(() => (window.__calls = []));
+await page.press("#search", "Enter");
+await page.waitForTimeout(300);
+const groupedCards = await page.locator(".card").count();
+const firstColLabel = await page.locator(".column-label").first().textContent();
+const firstColCount = await page.locator(".column").first().locator(".card").count();
+check(
+  "Enter brings the hidden tabs back and groups the matches",
+  groupedCards === 120,
+  `${groupedCards} cards`,
+);
+check(
+  "the match column is labeled with the query",
+  firstColLabel.trim() === "invoice",
+  firstColLabel,
+);
+check(
+  "the match column holds exactly the matches",
+  firstColCount === searchCards,
+  `${firstColCount} grouped vs ${searchCards} matched`,
+);
+check(
+  "grouping a search moves no tabs by itself",
+  (await page.evaluate(() => window.__calls.length)) === 0,
+  "no browser calls",
+);
+const groupedTitles = await page
+  .locator(".column")
+  .first()
+  .locator(".card-title")
+  .allTextContents();
+check(
+  "the grouped column contains only matches",
+  groupedTitles.every((x) => /invoice/i.test(x)),
+  groupedTitles.slice(0, 3).join(" | "),
+);
+await page.screenshot({ path: join(shots, "07-search.png") });
+
+await page.evaluate(() => (window.__calls = []));
+await page.click("#apply-btn");
+await page.waitForTimeout(400);
+const searchApply = await page.evaluate(() =>
+  window.__calls.filter((c) => c.name === "windows.create" || c.name === "tabs.move"),
+);
+check(
+  "Apply gives the grouped matches their own window",
+  searchApply.some((c) => c.name === "windows.create"),
+  `${searchApply.length} calls, ${searchApply.filter((c) => c.name === "windows.create").length} new windows`,
+);
+
+await page.press("#search", "Escape");
+await page.waitForTimeout(250);
+const clearedCards = await page.locator(".card").count();
+const clearedValue = await page.inputValue("#search");
+check(
+  "Escape clears the search and restores the board",
+  clearedCards === 120 && clearedValue === "",
+  `${clearedCards} cards, input "${clearedValue}"`,
+);
+
 const before = await page.locator(".card").count();
 const dupHighlights = await page.locator(".card.dup").count();
 check("duplicates are highlighted", dupHighlights > 0, `${dupHighlights} dup cards`);

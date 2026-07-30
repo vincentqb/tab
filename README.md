@@ -37,6 +37,16 @@ browser until you click **Apply**.
 Domain, Path and Title read disjoint parts of a tab, so the three disagree
 usefully. All of it runs locally.
 
+## Search
+
+Type to hide every tab that doesn't match. Matching is fuzzy against the title,
+host, and URL path, so `invioce`, `githb` and `gtihub` all find what you meant.
+Several words narrow rather than widen: `rust book` needs both.
+
+Press **Enter** to gather the matches into one column, labeled with your query,
+and bring the rest of the board back around it. **Apply** then moves that column
+into its own window. **Escape** clears the search.
+
 ## Development
 
 ```sh

@@ -47,6 +47,14 @@ commit, use `SKIP=<hook-id> git commit`.
   seeding measured 7.2s at 1000 tabs, versus ~5ms seeded.
 - Column drag reorders `state.columns` only — board sugar that must never issue a
   `browser.*` call. Card drag is the one that changes what Apply will do.
+- Search filters in `rebuildColumns`, so a hidden tab leaves the model and Dedupe,
+  Save and Apply all act on exactly what's on screen. Enter switches to
+  `groupByMatch`, which brings the hidden tabs back so Apply has somewhere to move
+  the matches from.
+- Fuzzy matching is deliberately constrained on two axes, and loosening either
+  brings back a measured false positive: subsequence hits must land within 1.5x
+  the query length (else `cart` matches "AsyncRusTbook"), and one-edit hits must
+  start at a word boundary (else `kube` matches "you**tube**"). Both are tested.
 - Thumbnail priority comes from a live `IntersectionObserver`, never a one-shot
   `getBoundingClientRect` sweep: a card grows ~4x taller once it has a thumbnail,
   so any single measurement prioritizes a layout the thumbnails then invalidate.
