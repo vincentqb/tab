@@ -43,8 +43,8 @@
           id="search"
           class="search"
           type="search"
-          placeholder="Search tabs — Enter groups matches"
-          title="Hides tabs that don't match. Press Enter to gather the matches into one column."
+          placeholder="Search"
+          title="Hides tabs that don't match. Each Enter groups the matches into a new column."
           autocomplete="off"
         />
         <label class="switch" title="Show page thumbnails (asks for capture permission)">
@@ -91,6 +91,7 @@
         <div class="column-head" draggable="true" title="Drag to reorder columns on the board">
           <span class="column-label"></span>
           <span class="column-count"></span>
+          <button class="column-drop" aria-label="Ungroup this search" hidden>&times;</button>
         </div>
         <ul class="tablist"></ul>
       </section>

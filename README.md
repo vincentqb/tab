@@ -43,9 +43,14 @@ Type to hide every tab that doesn't match. Matching is fuzzy against the title,
 host, and URL path, so `invioce`, `githb` and `gtihub` all find what you meant.
 Several words narrow rather than widen: `rust book` needs both.
 
-Press **Enter** to gather the matches into one column, labeled with your query,
-and bring the rest of the board back around it. **Apply** then moves that column
-into its own window. **Escape** clears the search.
+Press **Enter** to bank the matches as their own column, labeled with your query.
+The box clears, so the next search groups whatever the last one left behind —
+search and Enter again to build up as many groups as you want. Each keeps its
+tabs, so a later search never steals from an earlier one.
+
+Search columns are outlined in blue; the `×` on one ungroups it. Switching view
+regroups only the ungrouped tabs, leaving your searches alone. **Apply** moves
+each search group into its own window. **Escape** drops them all.
 
 ## Development
 

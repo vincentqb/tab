@@ -9,7 +9,7 @@ import {
   sessionFromColumns,
   parseSession,
   filterTabs,
-  groupByMatch,
+  groupBySearches,
   parseQuery,
 } from "./logic.js";
 
@@ -28,7 +28,7 @@ const state = {
   view: "window",
   visual: false,
   query: "",
-  grouped: false,
+  searches: [],
 };
 
 const els = {
@@ -73,6 +73,7 @@ function toColumns(groups) {
     id: nextColId(),
     label: g.label,
     windowId: g.windowId,
+    search: g.search,
     tabIds: g.tabs.map((t) => t.id),
   }));
 }
@@ -86,11 +87,12 @@ function groupTabs(tabs) {
 
 function rebuildColumns() {
   const all = [...state.tabsById.values()];
-  // Grouped search keeps the non-matching tabs on the board so Apply can move
-  // the matches out; plain search hides everything else.
-  const groups = state.grouped
-    ? groupByMatch(all, state.query, groupTabs)
-    : groupTabs(filterTabs(all, state.query));
+  // Saved searches always hold their columns. What's left is filtered live by
+  // whatever is typed, so a pending query narrows the board without disturbing
+  // the groups already made.
+  const groups = groupBySearches(all, state.searches, (rest) =>
+    groupTabs(filterTabs(rest, state.query)),
+  );
   state.columns = toColumns(groups);
   render();
 }
@@ -104,6 +106,13 @@ function render() {
     colNode.dataset.colId = col.id;
     colNode.querySelector(".column-label").textContent = col.label;
     colNode.querySelector(".column-count").textContent = `${col.tabIds.length}`;
+    const drop = colNode.querySelector(".column-drop");
+    if (col.search) {
+      colNode.classList.add("search-column");
+      drop.hidden = false;
+      drop.title = `Ungroup “${col.search}”`;
+      drop.addEventListener("click", () => removeSearch(col.search));
+    }
     const list = colNode.querySelector(".tablist");
     list.dataset.colId = col.id;
 
@@ -537,33 +546,66 @@ function selectView(view) {
   rebuildColumns();
 }
 
-function setQuery(query, { grouped = false } = {}) {
+function setQuery(query) {
   state.query = query;
-  state.grouped = grouped && parseQuery(query).length > 0;
-  els.search.classList.toggle("grouped", state.grouped);
   rebuildColumns();
   reportSearch();
 }
 
+// Enter banks the current query as its own column and empties the box, so the
+// next search groups what the previous one left behind.
+function groupCurrentSearch() {
+  const query = els.search.value.trim();
+  if (parseQuery(query).length === 0) return;
+  const unfiltered = groupBySearches(
+    [...state.tabsById.values()],
+    [...state.searches, query],
+    () => [],
+  );
+  const column = unfiltered.find((c) => c.search === query);
+  if (!column) {
+    setBanner(`Nothing left to group for “${query}”.`);
+    return;
+  }
+  state.searches.push(query);
+  els.search.value = "";
+  state.query = "";
+  rebuildColumns();
+  const n = column.tabs.length;
+  setBanner(
+    `Grouped ${n} tab${n === 1 ? "" : "s"} as “${query}”. Apply moves each group to its own window.`,
+  );
+}
+
+function removeSearch(query) {
+  state.searches = state.searches.filter((q) => q !== query);
+  rebuildColumns();
+  reportSearch();
+}
+
+function clearSearch() {
+  els.search.value = "";
+  state.query = "";
+  state.searches = [];
+  rebuildColumns();
+  setBanner("");
+}
+
 function reportSearch() {
-  const terms = parseQuery(state.query);
-  if (terms.length === 0) {
+  if (parseQuery(state.query).length === 0) {
     setBanner("");
     return;
   }
-  const shown = state.columns.reduce((n, c) => n + c.tabIds.length, 0);
-  if (state.grouped) {
-    const column = state.columns[0];
-    setBanner(
-      `Grouped ${column.tabIds.length} match${column.tabIds.length === 1 ? "" : "es"} for “${state.query.trim()}” into one column. Apply moves them to their own window.`,
-    );
-    return;
-  }
+  const grouped = new Set(state.columns.filter((c) => c.search).flatMap((c) => c.tabIds));
+  const shown = state.columns.filter((c) => !c.search).reduce((n, c) => n + c.tabIds.length, 0);
+  const groupedNote = grouped.size ? ` (${grouped.size} already grouped)` : "";
   if (shown === 0) {
-    setBanner(`No tabs match “${state.query.trim()}”.`);
+    setBanner(`No ungrouped tabs match “${state.query.trim()}”${groupedNote}.`);
     return;
   }
-  setBanner(`${shown} tab${shown === 1 ? "" : "s"} match; press Enter to group them.`);
+  setBanner(
+    `${shown} tab${shown === 1 ? "" : "s"} match${groupedNote}; press Enter to group them.`,
+  );
 }
 
 function init() {
@@ -576,11 +618,8 @@ function init() {
   });
   els.search.addEventListener("input", (e) => setQuery(e.target.value));
   els.search.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") setQuery(els.search.value, { grouped: true });
-    else if (e.key === "Escape") {
-      els.search.value = "";
-      setQuery("");
-    }
+    if (e.key === "Enter") groupCurrentSearch();
+    else if (e.key === "Escape") clearSearch();
   });
   document.getElementById("dedupe-btn").addEventListener("click", removeDuplicates);
   document.getElementById("save-btn").addEventListener("click", saveSession);

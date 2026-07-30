@@ -16,7 +16,7 @@ import {
   parseQuery,
   matchesQuery,
   filterTabs,
-  groupByMatch,
+  groupBySearches,
   sessionFromColumns,
   parseSession,
   isImportableUrl,
@@ -306,37 +306,61 @@ test("every term must match, so more words narrow the result", () => {
   );
 });
 
-test("groupByMatch puts matches in a leading column and regroups the rest", () => {
+test("groupBySearches makes one column per search, in order", () => {
   const tabs = [
     { id: 1, windowId: 1, url: "https://a.com/invoice", title: "Invoice" },
-    { id: 2, windowId: 1, url: "https://b.com/invoice", title: "Bill" },
+    { id: 2, windowId: 1, url: "https://b.com/x", title: "Rust book" },
     { id: 3, windowId: 2, url: "https://c.com/x", title: "Unrelated" },
   ];
-  const cols = groupByMatch(tabs, "invoice", groupByWindow);
-  assert.equal(cols[0].label, "invoice");
+  const cols = groupBySearches(tabs, ["invoice", "rust"], groupByWindow);
   assert.deepEqual(
-    cols[0].tabs.map((t) => t.id),
-    [1, 2],
+    cols.slice(0, 2).map((c) => [c.label, c.tabs.map((t) => t.id)]),
+    [
+      ["invoice", [1]],
+      ["rust", [2]],
+    ],
   );
-  assert.equal(cols[0].windowId, undefined, "the match column must not claim a window");
-  const rest = cols.slice(1).flatMap((c) => c.tabs.map((t) => t.id));
-  assert.deepEqual(rest, [3]);
+  assert.equal(cols[0].windowId, undefined, "a search column must not claim a window");
+  assert.deepEqual(
+    cols.slice(2).flatMap((c) => c.tabs.map((t) => t.id)),
+    [3],
+  );
 });
 
-test("groupByMatch falls back to the plain view when nothing matches", () => {
-  const tabs = [{ id: 1, windowId: 1, url: "https://a.com", title: "A" }];
-  assert.deepEqual(groupByMatch(tabs, "zzz", groupByWindow), groupByWindow(tabs));
-  assert.deepEqual(groupByMatch(tabs, "", groupByWindow), groupByWindow(tabs));
+test("an earlier search keeps its tabs when a later one would also match", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/rust/book", title: "Rust book" },
+    { id: 2, windowId: 1, url: "https://b.com/rust/video", title: "Rust video" },
+  ];
+  const cols = groupBySearches(tabs, ["book", "rust"], groupByWindow);
+  assert.deepEqual(
+    cols.map((c) => [c.label, c.tabs.map((t) => t.id)]),
+    [
+      ["book", [1]],
+      ["rust", [2]],
+    ],
+  );
 });
 
-test("groupByMatch keeps every tab exactly once", () => {
+test("a search that matches nothing left over adds no column", () => {
+  const tabs = [{ id: 1, windowId: 1, url: "https://a.com/invoice", title: "Invoice" }];
+  const cols = groupBySearches(tabs, ["invoice", "invoice"], groupByWindow);
+  assert.equal(cols.filter((c) => c.search).length, 1, "the second search has nothing to take");
+  assert.deepEqual(groupBySearches(tabs, ["zzz"], groupByWindow), groupByWindow(tabs));
+  assert.deepEqual(groupBySearches(tabs, [], groupByWindow), groupByWindow(tabs));
+  assert.deepEqual(groupBySearches(tabs, ["  "], groupByWindow), groupByWindow(tabs));
+});
+
+test("groupBySearches keeps every tab exactly once", () => {
   const tabs = Array.from({ length: 30 }, (_, i) => ({
     id: i,
     windowId: (i % 3) + 1,
     url: `https://site${i % 5}.com/page/${i}`,
-    title: i % 4 === 0 ? `Invoice ${i}` : `Page ${i}`,
+    title: i % 4 === 0 ? `Invoice ${i}` : `Report ${i}`,
   }));
-  const ids = groupByMatch(tabs, "invoice", groupByWindow).flatMap((c) => c.tabs.map((t) => t.id));
+  const ids = groupBySearches(tabs, ["invoice", "report"], groupByWindow).flatMap((c) =>
+    c.tabs.map((t) => t.id),
+  );
   assert.equal(ids.length, tabs.length);
   assert.equal(new Set(ids).size, tabs.length);
 });

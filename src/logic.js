@@ -312,16 +312,23 @@ export function filterTabs(tabs, query) {
   return tabs.filter((tab) => matchesQuery(tab, terms));
 }
 
-// One column of everything the query matches, so Apply can gather it into a
-// single window. Non-matching tabs keep their existing grouping.
-export function groupByMatch(tabs, query, rest) {
-  const terms = parseQuery(query);
-  if (terms.length === 0) return rest(tabs);
-  const matched = [];
-  const others = [];
-  for (const tab of tabs) (matchesQuery(tab, terms) ? matched : others).push(tab);
-  if (matched.length === 0) return rest(tabs);
-  return [{ label: query.trim(), tabs: matched }, ...rest(others)];
+// One column per saved search, in the order they were made, then the current
+// view over whatever is left. An earlier search keeps its tabs, so adding a
+// search never reshuffles the groups already on the board.
+export function groupBySearches(tabs, queries, rest) {
+  const columns = [];
+  let remaining = tabs;
+  for (const query of queries) {
+    const terms = parseQuery(query);
+    if (terms.length === 0) continue;
+    const matched = [];
+    const others = [];
+    for (const tab of remaining) (matchesQuery(tab, terms) ? matched : others).push(tab);
+    if (matched.length === 0) continue;
+    columns.push({ label: query.trim(), tabs: matched, search: query });
+    remaining = others;
+  }
+  return [...columns, ...rest(remaining)];
 }
 
 export function groupByWindow(tabs) {

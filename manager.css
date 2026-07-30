@@ -132,9 +132,31 @@ body {
   border-color: var(--accent);
 }
 
-.search.grouped {
+.column.search-column {
   border-color: var(--accent);
+}
+
+.column.search-column .column-head {
   background: var(--accent-weak);
+}
+
+.column.search-column .column-label {
+  color: var(--accent);
+}
+
+.column-drop {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.column-drop:hover {
+  background: var(--surface);
 }
 
 .switch {

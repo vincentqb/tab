@@ -48,9 +48,11 @@ commit, use `SKIP=<hook-id> git commit`.
 - Column drag reorders `state.columns` only — board sugar that must never issue a
   `browser.*` call. Card drag is the one that changes what Apply will do.
 - Search filters in `rebuildColumns`, so a hidden tab leaves the model and Dedupe,
-  Save and Apply all act on exactly what's on screen. Enter switches to
-  `groupByMatch`, which brings the hidden tabs back so Apply has somewhere to move
-  the matches from.
+  Save and Apply all act on exactly what's on screen.
+- `state.searches` accumulates: each Enter appends a query, and `groupBySearches`
+  gives each its own column in order, consuming tabs as it goes so an earlier
+  search always keeps them. The live query filters only the ungrouped remainder,
+  which is why switching view or typing again never disturbs a banked group.
 - Fuzzy matching is deliberately constrained on two axes, and loosening either
   brings back a measured false positive: subsequence hits must land within 1.5x
   the query length (else `cart` matches "AsyncRusTbook"), and one-edit hits must

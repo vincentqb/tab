@@ -115,38 +115,39 @@ check(
 
 await page.fill("#search", "invioce");
 await page.waitForTimeout(250);
-const typoCards = await page.locator(".card").count();
 check(
   "a transposed-letter query still finds the tabs",
-  typoCards === searchCards,
-  `${typoCards} cards for a typo vs ${searchCards} exact`,
+  (await page.locator(".card").count()) === searchCards,
+  `typo matched ${await page.locator(".card").count()} vs ${searchCards} exact`,
 );
 
 await page.fill("#search", "zzzznothing");
 await page.waitForTimeout(250);
-const emptyCards = await page.locator(".card").count();
-const emptyBanner = await page.locator("#banner").textContent();
-check("a query with no matches empties the board", emptyCards === 0, `${emptyCards} cards`);
-check("a query with no matches says so", /No tabs match/.test(emptyBanner), emptyBanner.trim());
+check("a query with no matches empties the board", (await page.locator(".card").count()) === 0);
+check(
+  "a query with no matches says so",
+  /No ungrouped tabs match/.test(await page.locator("#banner").textContent()),
+  (await page.locator("#banner").textContent()).trim(),
+);
 
+const labelsNow = () => page.locator(".column-label").allTextContents();
 await page.fill("#search", "invoice");
 await page.waitForTimeout(200);
 await page.evaluate(() => (window.__calls = []));
 await page.press("#search", "Enter");
 await page.waitForTimeout(300);
-const groupedCards = await page.locator(".card").count();
-const firstColLabel = await page.locator(".column-label").first().textContent();
-const firstColCount = await page.locator(".column").first().locator(".card").count();
 check(
   "Enter brings the hidden tabs back and groups the matches",
-  groupedCards === 120,
-  `${groupedCards} cards`,
+  (await page.locator(".card").count()) === 120,
+  `${await page.locator(".card").count()} cards`,
 );
+check("Enter clears the box, ready for the next search", (await page.inputValue("#search")) === "");
 check(
   "the match column is labeled with the query",
-  firstColLabel.trim() === "invoice",
-  firstColLabel,
+  (await labelsNow())[0].trim() === "invoice",
+  (await labelsNow())[0],
 );
+const firstColCount = await page.locator(".column").first().locator(".card").count();
 check(
   "the match column holds exactly the matches",
   firstColCount === searchCards,
@@ -157,38 +158,75 @@ check(
   (await page.evaluate(() => window.__calls.length)) === 0,
   "no browser calls",
 );
-const groupedTitles = await page
-  .locator(".column")
-  .first()
-  .locator(".card-title")
-  .allTextContents();
+
+await page.fill("#search", "rust");
+await page.waitForTimeout(200);
+await page.press("#search", "Enter");
+await page.waitForTimeout(300);
+const twoLabels = await labelsNow();
 check(
-  "the grouped column contains only matches",
-  groupedTitles.every((x) => /invoice/i.test(x)),
-  groupedTitles.slice(0, 3).join(" | "),
+  "a second Enter adds another column instead of replacing the first",
+  twoLabels[0].trim() === "invoice" && twoLabels[1].trim() === "rust",
+  twoLabels.slice(0, 4).join(" | "),
+);
+check(
+  "both searches are marked as search columns",
+  (await page.locator(".column.search-column").count()) === 2,
+  `${await page.locator(".column.search-column").count()} search columns`,
+);
+check(
+  "accumulating searches keeps every tab",
+  (await page.locator(".card").count()) === 120,
+  `${await page.locator(".card").count()} cards`,
+);
+const rustCol = await page.locator(".column").nth(1).locator(".card-title").allTextContents();
+check(
+  "the second column holds only its own matches",
+  rustCol.every((x) => /rust/i.test(x)),
+  rustCol.slice(0, 3).join(" | "),
 );
 await page.screenshot({ path: join(shots, "07-search.png") });
 
+await page.click('[data-view="domain"]');
+await page.waitForTimeout(300);
+const afterViewSwitch = await labelsNow();
+check(
+  "switching view keeps the search groups and regroups only the rest",
+  afterViewSwitch[0].trim() === "invoice" &&
+    afterViewSwitch[1].trim() === "rust" &&
+    afterViewSwitch[2].includes("."),
+  afterViewSwitch.slice(0, 4).join(" | "),
+);
+await page.click('[data-view="window"]');
+await page.waitForTimeout(200);
+
 await page.evaluate(() => (window.__calls = []));
 await page.click("#apply-btn");
-await page.waitForTimeout(400);
-const searchApply = await page.evaluate(() =>
-  window.__calls.filter((c) => c.name === "windows.create" || c.name === "tabs.move"),
+await page.waitForTimeout(500);
+const newWindows = await page.evaluate(
+  () => window.__calls.filter((c) => c.name === "windows.create").length,
 );
 check(
-  "Apply gives the grouped matches their own window",
-  searchApply.some((c) => c.name === "windows.create"),
-  `${searchApply.length} calls, ${searchApply.filter((c) => c.name === "windows.create").length} new windows`,
+  "Apply gives each grouped search its own window",
+  newWindows >= 2,
+  `${newWindows} windows created for 2 search groups`,
+);
+
+await page.locator(".column.search-column").first().locator(".column-drop").click();
+await page.waitForTimeout(300);
+check(
+  "the x on a search column ungroups it",
+  (await page.locator(".column.search-column").count()) === 1,
+  `${await page.locator(".column.search-column").count()} left`,
 );
 
 await page.press("#search", "Escape");
-await page.waitForTimeout(250);
-const clearedCards = await page.locator(".card").count();
-const clearedValue = await page.inputValue("#search");
+await page.waitForTimeout(300);
 check(
-  "Escape clears the search and restores the board",
-  clearedCards === 120 && clearedValue === "",
-  `${clearedCards} cards, input "${clearedValue}"`,
+  "Escape drops every search group",
+  (await page.locator(".column.search-column").count()) === 0 &&
+    (await page.locator(".card").count()) === 120,
+  `${await page.locator(".column.search-column").count()} groups, ${await page.locator(".card").count()} cards`,
 );
 
 const before = await page.locator(".card").count();
