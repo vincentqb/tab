@@ -8,8 +8,8 @@ import {
   pathTokens,
   titleTokens,
   clusterByTokens,
-  groupByPath,
-  groupByTitle,
+  subjectTokens,
+  groupBySubject,
   groupByWindow,
   groupByDomain,
   searchFields,
@@ -121,31 +121,50 @@ test("titleTokens reads only the title", () => {
   assert.ok(!tokens.has("github"), "URL is not part of the title");
 });
 
-test("groupByPath ignores the host, so it can group across sites", () => {
-  const tabs = [
-    { id: 1, windowId: 1, url: "https://a.com/billing/invoice/2024", title: "one" },
-    { id: 2, windowId: 1, url: "https://b.com/billing/invoice/2025", title: "two" },
-    { id: 3, windowId: 1, url: "https://c.com/watch", title: "three" },
-  ];
-  const cols = groupByPath(tabs);
-  const invoice = cols.find((c) => c.tabs.some((t) => t.id === 1));
-  assert.ok(
-    invoice.tabs.some((t) => t.id === 2),
-    "same path words merge across hosts",
-  );
-  assert.ok(!invoice.tabs.some((t) => t.id === 3));
+test("subjectTokens reads the title and the path, not the host", () => {
+  const tokens = subjectTokens({
+    url: "https://vendor.example/billing/invoice",
+    title: "Quarterly report",
+  });
+  assert.ok(tokens.has("quarterly"), "title words");
+  assert.ok(tokens.has("billing"), "path words");
+  assert.ok(!tokens.has("vendor"), "the host belongs to the Domain view");
 });
 
-test("groupByTitle ignores the URL, so unrelated sites with one subject merge", () => {
+test("groupBySubject merges one subject across unrelated sites", () => {
   const tabs = [
     { id: 1, windowId: 1, url: "https://a.com/x", title: "Async Rust Tokio" },
     { id: 2, windowId: 1, url: "https://b.com/y", title: "Async Rust Tokio" },
     { id: 3, windowId: 1, url: "https://c.com/z", title: "Best pasta recipe" },
   ];
-  const cols = groupByTitle(tabs);
+  const cols = groupBySubject(tabs);
   const rust = cols.find((c) => c.tabs.some((t) => t.id === 1));
   assert.ok(rust.tabs.some((t) => t.id === 2));
   assert.ok(!rust.tabs.some((t) => t.id === 3));
+});
+
+test("groupBySubject falls back to the URL when titles say nothing", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/billing/invoice/2024", title: "Open" },
+    { id: 2, windowId: 1, url: "https://b.com/billing/invoice/2025", title: "Open" },
+    { id: 3, windowId: 1, url: "https://c.com/watch", title: "Open" },
+  ];
+  const cols = groupBySubject(tabs);
+  const invoice = cols.find((c) => c.tabs.some((t) => t.id === 1));
+  assert.ok(
+    invoice.tabs.some((t) => t.id === 2),
+    "shared path words merge across hosts",
+  );
+  assert.ok(!invoice.tabs.some((t) => t.id === 3));
+});
+
+test("a subject column is named from the title, never a URL slug", () => {
+  const tabs = [
+    { id: 1, windowId: 1, url: "https://a.com/acme/billing/pull", title: "Quarterly invoice" },
+    { id: 2, windowId: 1, url: "https://a.com/acme/billing/pull2", title: "Quarterly invoice" },
+  ];
+  const label = groupBySubject(tabs)[0].label;
+  assert.ok(["quarterly", "invoice"].includes(label), `unexpected label ${label}`);
 });
 
 test("clusterByTokens keeps same-domain tabs together", () => {
@@ -166,10 +185,10 @@ test("labels come from the grouping input, never the host", () => {
     { id: 2, windowId: 1, url: "https://github.com/acme/billing/invoice2", title: "Invoice two" },
   ];
   assert.ok(
-    groupByPath(tabs).every((c) => !c.label.includes(".")),
+    groupBySubject(tabs).every((c) => !c.label.includes(".")),
     "path labels must not be hostnames",
   );
-  assert.equal(groupByTitle(tabs)[0].label, "invoice");
+  assert.equal(groupBySubject(tabs)[0].label, "invoice");
 });
 
 test("clusterByTokens returns clusters largest-first and partitions all tabs", () => {
@@ -189,9 +208,9 @@ test("tabs with no usable tokens share one column instead of one each", () => {
   const tabs = [
     { id: 1, windowId: 1, url: "https://a.com/", title: "A" },
     { id: 2, windowId: 1, url: "https://b.com/", title: "B" },
-    { id: 3, windowId: 1, url: "https://c.com/reports/annual", title: "C" },
+    { id: 3, windowId: 1, url: "https://c.com/reports/annual", title: "Annual reports" },
   ];
-  const cols = groupByPath(tabs);
+  const cols = groupBySubject(tabs);
   const nameless = cols.filter((c) => c.label === "");
   assert.equal(nameless.length, 1, `expected one nameless column, got ${cols.length} columns`);
   assert.deepEqual(
@@ -206,15 +225,15 @@ test("an encoded blob does not become a token or a label", () => {
   const tab = { id: 1, windowId: 1, url: `https://loop.cloud.microsoft/p/${blob}`, title: blob };
   assert.equal(pathTokens(tab).size, 0, "a 68-char base64 run is not a word");
   assert.equal(titleTokens(tab).size, 0);
-  assert.equal(groupByPath([tab])[0].label, "");
+  assert.equal(groupBySubject([tab])[0].label, "");
   const long = [...searchFields(tab)].filter((f) => f.length > 300);
   assert.equal(long.length, 0, `search fields should not carry huge strings: ${long.length}`);
 });
 
 test("empty input yields empty clusters", () => {
   assert.deepEqual(clusterByTokens([], titleTokens), []);
-  assert.deepEqual(groupByPath([]), []);
-  assert.deepEqual(groupByTitle([]), []);
+  assert.deepEqual(groupBySubject([]), []);
+  assert.deepEqual(groupBySubject([]), []);
 });
 
 test("both token views handle 150 tabs quickly", () => {
@@ -226,8 +245,8 @@ test("both token views handle 150 tabs quickly", () => {
     title: `Topic ${i % 7} page ${i}`,
   }));
   for (const [name, fn] of [
-    ["groupByPath", groupByPath],
-    ["groupByTitle", groupByTitle],
+    ["groupBySubject", groupBySubject],
+    ["groupBySubject", groupBySubject],
   ]) {
     const start = process.hrtime.bigint();
     const cols = fn(tabs);

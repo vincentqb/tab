@@ -5,4 +5,4 @@ _harness_big.html
 # npm run test:ui regenerates all of these; only the one the README shows is
 # tracked
 test/screenshots/*
-!test/screenshots/04-title.png
+!test/screenshots/03-title.png

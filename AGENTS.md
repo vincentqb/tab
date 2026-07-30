@@ -36,15 +36,15 @@ commit, use `SKIP=<hook-id> git commit`.
   glue in `manager.js`. Don't import `logic.js` into the background script.
 - Views return a uniform shape: `[{ label, tabs, windowId? }]`. `windowId` is set
   only by `groupByWindow`, which is what lets Apply treat that view as a no-op.
-- **One view per input.** Domain reads the host, Path the URL after it, Title the
-  page title — disjoint by design, which is why there's no view mixing them. A new
-  view needs a new input, not a blend of these.
-- `labelFor` names a column from the same tokens that grouped it. Never label from
-  the host in a Path or Title column, or the view impersonates Domain whenever a
+- **Two grouping inputs, not three.** Domain reads the host; Title reads the page
+  title plus the URL path. Title matches on both but labels only from the title,
+  because path words are machine slugs (`acme`, `billing`, `watch`) — a column
+  named from a slug reads as noise. Path was once its own view and earned removal:
+  its labels were unreadable and it duplicated what Title already covered.
+- `clusterByTokens` seeds groups per domain before merging, which is what keeps it
+  O(domains²) — per-tab seeding measured 7.2s at 1000 tabs, versus ~5ms seeded.
+- Never label a column from the host: the view would impersonate Domain whenever a
   cluster happens to be single-site.
-- Path and Title share `clusterByTokens`; only the tokenizer differs. It seeds
-  groups per domain before merging, which is what keeps it O(domains²) — per-tab
-  seeding measured 7.2s at 1000 tabs, versus ~5ms seeded.
 - Column drag reorders `state.columns` only — board sugar that must never issue a
   `browser.*` call. Card drag is the one that changes what Apply will do.
 - Search filters in `rebuildColumns`, so a hidden tab leaves the model and Dedupe,
@@ -61,6 +61,11 @@ commit, use `SKIP=<hook-id> git commit`.
   `getBoundingClientRect` sweep: a card grows ~4x taller once it has a thumbnail,
   so any single measurement prioritizes a layout the thumbnails then invalidate.
   `EAGER_LIMIT` caps stored thumbnails, not attempts.
+- A capture timeout is **not** a verdict. Firefox renders a discarded tab before
+  capturing it, so a slow first attempt says nothing; only a rejection from
+  Firefox is final. Timeouts escalate (`CAPTURE_TIMEOUT_MS`) and retries use their
+  own queue that bypasses `EAGER_LIMIT` — counting stored thumbnails would
+  otherwise strand every retry once the cap was reached.
 - Saved sessions carry `{ version, groups: [{ label, tabs: [{ url, title }] }] }`
   and no browser ids; ids mean nothing in a later session. `parseSession` accepts
   looser shapes so a hand-edited file still imports, and keeps `http(s)` only.
@@ -98,4 +103,7 @@ there rather than hard-coding a hex in a rule.
   pre-existing dead code rather than delete it.
 - **No comments.** Names and tests carry the meaning. Reach for a clearer name or
   a smaller function instead of a comment; never narrate an edit.
+- **README is instructions, not a pitch.** Terse: how to install, what each
+  control does, how to run the tests. No feature-selling, no rationale, no
+  explaining the algorithms — that belongs here in `AGENTS.md`.
 - Honest, direct, calibrated — say what was verified vs. assumed. Not sycophantic.

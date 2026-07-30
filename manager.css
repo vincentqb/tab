@@ -160,12 +160,38 @@ body {
   background: var(--surface);
 }
 
+/* `display: flex` would beat the hidden attribute's `display: none`. */
+.banner[hidden] {
+  display: none;
+}
+
 .banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 16px;
   background: var(--accent-weak);
   border-bottom: 1px solid var(--border);
   color: var(--text);
   font-size: 13px;
+}
+
+.banner-close {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.banner-close:hover {
+  color: var(--text);
+  background: var(--surface);
 }
 
 .banner.error {

@@ -151,7 +151,7 @@ function jaccard(a, b) {
   return intersection / (a.size + b.size - intersection);
 }
 
-export function clusterByTokens(tabs, tokenize, { threshold = 0.26 } = {}) {
+export function clusterByTokens(tabs, tokenize, { threshold = 0.26, label = tokenize } = {}) {
   if (tabs.length === 0) return [];
 
   const seeds = new Map();
@@ -199,8 +199,8 @@ export function clusterByTokens(tabs, tokenize, { threshold = 0.26 } = {}) {
   const named = [];
   const nameless = [];
   for (const g of groups) {
-    const label = labelFor(g.tabs, tokenize);
-    (label ? named : nameless).push({ label, tabs: g.tabs });
+    const name = labelFor(g.tabs, label);
+    (name ? named : nameless).push({ label: name, tabs: g.tabs });
   }
   const columns = named.sort(
     (a, b) => b.tabs.length - a.tabs.length || a.label.localeCompare(b.label),
@@ -209,12 +209,24 @@ export function clusterByTokens(tabs, tokenize, { threshold = 0.26 } = {}) {
   return rest.length ? [...columns, { label: "", tabs: rest }] : columns;
 }
 
-export function groupByPath(tabs) {
-  return clusterByTokens(tabs, pathTokens);
+// Match on the title AND the URL path, but name the column from the title only:
+// path words are machine slugs ("acme", "billing", "watch") while titles are
+// written for people. Matching on both means a tab whose title says nothing still
+// groups by its URL.
+export function subjectTokens(tab) {
+  const tokens = titleTokens(tab);
+  for (const token of pathTokens(tab)) tokens.add(token);
+  return tokens;
 }
 
-export function groupByTitle(tabs) {
-  return clusterByTokens(tabs, titleTokens);
+// Prefer a title word for the name; fall back to a path word so a group that
+// formed on its URLs still gets called something.
+export function groupBySubject(tabs) {
+  const label = (tab) => {
+    const fromTitle = titleTokens(tab);
+    return fromTitle.size ? fromTitle : pathTokens(tab);
+  };
+  return clusterByTokens(tabs, subjectTokens, { label });
 }
 
 const FUZZY_SPAN = 1.5;

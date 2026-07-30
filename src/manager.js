@@ -1,8 +1,7 @@
 import {
   groupByWindow,
   groupByDomain,
-  groupByPath,
-  groupByTitle,
+  groupBySubject,
   duplicateTabIds,
   planApply,
   domainKey,
@@ -35,6 +34,7 @@ const els = {
   board: document.getElementById("board"),
   stat: document.getElementById("stat"),
   banner: document.getElementById("banner"),
+  bannerText: document.getElementById("banner-text"),
   visualBtn: document.getElementById("visual-btn"),
   retryBtn: document.getElementById("retry-btn"),
   importFile: document.getElementById("import-file"),
@@ -81,8 +81,7 @@ function toColumns(groups) {
 
 function groupTabs(tabs) {
   if (state.view === "domain") return groupByDomain(tabs);
-  if (state.view === "path") return groupByPath(tabs);
-  if (state.view === "title") return groupByTitle(tabs);
+  if (state.view === "title") return groupBySubject(tabs);
   return groupByWindow(tabs);
 }
 
@@ -106,7 +105,7 @@ function render() {
     const colNode = els.columnTpl.content.firstElementChild.cloneNode(true);
     colNode.dataset.colId = col.id;
     const labelNode = colNode.querySelector(".column-label");
-    labelNode.textContent = col.label || (state.view === "path" ? "no path" : "no title");
+    labelNode.textContent = col.label || "untitled";
     labelNode.title = labelNode.textContent;
     colNode.querySelector(".column-count").textContent = `${col.tabIds.length}`;
     const drop = colNode.querySelector(".column-drop");
@@ -192,7 +191,7 @@ function updateStats(dupCount) {
 }
 
 function setBanner(text, isError = false) {
-  els.banner.textContent = text;
+  els.bannerText.textContent = text;
   els.banner.hidden = !text;
   els.banner.classList.toggle("error", isError);
 }
@@ -678,6 +677,7 @@ function init() {
     else if (e.key === "Escape") clearSearch();
   });
   els.retryBtn.addEventListener("click", retryStalled);
+  document.getElementById("banner-close").addEventListener("click", () => setBanner(""));
   document.getElementById("dedupe-btn").addEventListener("click", removeDuplicates);
   document.getElementById("save-btn").addEventListener("click", saveSession);
   document.getElementById("import-btn").addEventListener("click", () => els.importFile.click());

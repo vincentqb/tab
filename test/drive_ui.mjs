@@ -51,8 +51,8 @@ check("current view renders all 120 tabs", cards === 120, `${cards} cards`);
 check("current view has 4 columns", cols === 4, `${cols} columns`);
 const viewNames = await page.locator(".view-btn").allTextContents();
 check(
-  "views are named Current/Domain/Path/Title",
-  viewNames.map((t) => t.trim()).join(",") === "Current,Domain,Path,Title",
+  "views are named Current/Domain/Title",
+  viewNames.map((t) => t.trim()).join(",") === "Current,Domain,Title",
   viewNames.map((t) => t.trim()).join(","),
 );
 const stat = await page.locator("#stat").textContent();
@@ -67,37 +67,24 @@ check("domain view groups into domain columns", cols >= 5, `${cols} columns`);
 check("largest domain column is labeled", firstLabel.includes("."), firstLabel);
 await page.screenshot({ path: join(shots, "02-domain.png") });
 
-await page.click('[data-view="path"]');
-await page.waitForTimeout(250);
-const pathCols = await page.locator(".column").count();
-const pathCards = await page.locator(".card").count();
-const pathLabels = await page.locator(".column-label").allTextContents();
-check("path view preserves all tabs", pathCards === 120, `${pathCards} cards`);
-check("path view produces columns", pathCols >= 2, `${pathCols} columns`);
-check(
-  "path labels come from the URL, not the host",
-  pathLabels.every((l) => !l.includes(".")),
-  pathLabels.join(", "),
-);
-check(
-  "no column is labeled with an encoded blob",
-  pathLabels.every((l) => l.length <= 24),
-  pathLabels.map((l) => l.length).join(","),
-);
-check(
-  "pathless tabs share one fallback column instead of many",
-  pathLabels.filter((l) => l === "no path").length <= 1,
-  pathLabels.join(", "),
-);
-await page.screenshot({ path: join(shots, "03-path.png") });
-
 await page.click('[data-view="title"]');
 await page.waitForTimeout(250);
 const titleCols = await page.locator(".column").count();
 const titleCards = await page.locator(".card").count();
+const titleLabels = await page.locator(".column-label").allTextContents();
 check("title view preserves all tabs", titleCards === 120, `${titleCards} cards`);
 check("title view produces columns", titleCols >= 2, `${titleCols} columns`);
-await page.screenshot({ path: join(shots, "04-title.png") });
+check(
+  "title labels are words, not hostnames or slugs",
+  titleLabels.every((l) => !l.includes(".") && l.length <= 24),
+  titleLabels.join(", "),
+);
+check(
+  "nameless tabs share one fallback column",
+  titleLabels.filter((l) => l === "untitled").length <= 1,
+  titleLabels.join(", "),
+);
+await page.screenshot({ path: join(shots, "03-title.png") });
 
 await page.click('[data-view="window"]');
 await page.waitForTimeout(150);
@@ -136,8 +123,8 @@ await page.waitForTimeout(250);
 check("a query with no matches empties the board", (await page.locator(".card").count()) === 0);
 check(
   "a query with no matches says so",
-  /No ungrouped tabs match/.test(await page.locator("#banner").textContent()),
-  (await page.locator("#banner").textContent()).trim(),
+  /No ungrouped tabs match/.test(await page.locator("#banner-text").textContent()),
+  (await page.locator("#banner-text").textContent()).trim(),
 );
 
 const labelsNow = () => page.locator(".column-label").allTextContents();
@@ -357,14 +344,14 @@ check(
   tabCreates.length === 1,
   `${tabCreates.length} tabs.create (about:config skipped)`,
 );
-const importBanner = await page.locator("#banner").textContent();
+const importBanner = await page.locator("#banner-text").textContent();
 check("import reports what it opened", /Imported 3 tabs/.test(importBanner), importBanner.trim());
 
 const badPath = join(root, "test", "_bad.json");
 await writeFile(badPath, "totally not json");
 await page.setInputFiles("#import-file", badPath);
 await page.waitForTimeout(300);
-const badBanner = await page.locator("#banner").textContent();
+const badBanner = await page.locator("#banner-text").textContent();
 check("bad import file shows an error banner", /Import failed/.test(badBanner), badBanner.trim());
 await rm(importPath, { force: true });
 await rm(badPath, { force: true });
@@ -375,7 +362,7 @@ await page.waitForTimeout(400);
 const calls = await page.evaluate(() => window.__calls);
 const moved = calls.filter((c) => c.name === "tabs.move");
 check("apply issues tabs.move calls", moved.length > 0, `${moved.length} move calls`);
-const applyBanner = await page.locator("#banner").textContent();
+const applyBanner = await page.locator("#banner-text").textContent();
 check("apply reports completion", /applied/i.test(applyBanner), applyBanner.trim());
 
 await page.evaluate(() => (window.__calls = []));
@@ -395,7 +382,7 @@ await page.click("#visual-btn");
 await page.waitForFunction(
   () =>
     /^Captured \d+ of \d+ thumbnails[^\u2026]*\.$/.test(
-      document.getElementById("banner").textContent.trim(),
+      document.getElementById("banner-text").textContent.trim(),
     ),
   null,
   { timeout: 40000 },
@@ -404,6 +391,11 @@ const boardHasVisual = await page.evaluate(() =>
   document.getElementById("board").classList.contains("visual"),
 );
 check("visual toggle enables visual board mode", boardHasVisual);
+check(
+  "the thumbnail button is labeled Thumbnail",
+  (await page.textContent("#visual-btn")).trim() === "Thumbnail",
+  (await page.textContent("#visual-btn")).trim(),
+);
 check(
   "the Visual button shows its pressed state",
   (await page.getAttribute("#visual-btn", "aria-pressed")) === "true",
@@ -440,7 +432,7 @@ check(
   cardGeometry.closeOutsideTopRight === 0,
   `${cardGeometry.closeOutsideTopRight} misplaced`,
 );
-const settledBanner = await page.locator("#banner").textContent();
+const settledBanner = await page.locator("#banner-text").textContent();
 check(
   "the queue settles despite captures that never resolve",
   /^Captured \d+ of \d+ thumbnails/.test(settledBanner.trim()) && !/Capturing/.test(settledBanner),
@@ -581,13 +573,27 @@ check(
   Object.values(retryAttempts).some((n) => n > 1),
   `attempt counts: ${JSON.stringify(retryAttempts).slice(0, 80)}`,
 );
-const visualBanner = await page.locator("#banner").textContent();
+const visualBanner = await page.locator("#banner-text").textContent();
 check(
   "the banner accounts for captured, blocked, and pending",
   /Captured \d+ of \d+ thumbnails/.test(visualBanner),
   visualBanner.trim(),
 );
 await page.screenshot({ path: join(shots, "06-visual.png") });
+
+// The banner must be dismissible: it reports failures the user may want gone.
+await page.click("#refresh-btn");
+await page.waitForTimeout(200);
+await page.fill("#search", "zzzznothing");
+await page.waitForTimeout(250);
+check(
+  "the banner shows a message with a close button",
+  !(await page.isHidden("#banner")) && !(await page.isHidden("#banner-close")),
+  (await page.textContent("#banner-text")).trim(),
+);
+await page.click("#banner-close");
+await page.waitForTimeout(150);
+check("clicking the banner close hides it", await page.isHidden("#banner"));
 
 check("no console/page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 

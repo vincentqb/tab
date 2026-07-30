@@ -27,13 +27,10 @@
         </button>
         <button
           class="view-btn"
-          data-view="path"
+          data-view="title"
           role="tab"
-          title="By words in the URL after the site name"
+          title="By words in the page title, and in the URL when the title says little"
         >
-          Path
-        </button>
-        <button class="view-btn" data-view="title" role="tab" title="By words in the page title">
           Title
         </button>
       </nav>
@@ -53,7 +50,7 @@
           aria-pressed="false"
           title="Show page thumbnails (asks for capture permission)"
         >
-          Visual
+          Thumbnail
         </button>
         <button
           id="retry-btn"
@@ -94,7 +91,10 @@
       </div>
     </header>
 
-    <div id="banner" class="banner" hidden></div>
+    <div id="banner" class="banner" hidden>
+      <span id="banner-text"></span>
+      <button id="banner-close" class="banner-close" aria-label="Dismiss message">&times;</button>
+    </div>
 
     <main id="board" class="board" aria-label="Tab columns"></main>
 
