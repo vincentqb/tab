@@ -53,10 +53,31 @@ const mock = `
   const rec = (name, arg) => window.__calls.push({ name, arg });
   let nextWin = 100;
   let nextTab = 9000;
+  // A reload changes the title and drops the favicon, and the tab reports
+  // "loading" once before it settles: the card must not read the tab until then.
+  const reloaded = {};
+  window.__loadingLeft = {};
   window.browser = {
     runtime: { getURL: () => MANAGER },
     tabs: {
       query: async () => structuredClone(SEED),
+      reload: async (id, opts) => {
+        rec("tabs.reload", { id, opts });
+        if (id % 19 === 0) throw new Error("cannot reload privileged page");
+        reloaded[id] = true;
+        window.__loadingLeft[id] = 1;
+      },
+      get: async (id) => {
+        const seed = SEED.find((t) => t.id === id);
+        if (!seed) throw new Error("no such tab: " + id);
+        rec("tabs.get", id);
+        if (window.__loadingLeft[id] > 0) {
+          window.__loadingLeft[id]--;
+          return { ...seed, status: "loading" };
+        }
+        if (!reloaded[id]) return { ...seed, status: "complete" };
+        return { ...seed, status: "complete", title: "RELOADED " + seed.title, favIconUrl: "" };
+      },
       remove: async (ids) => rec("tabs.remove", ids),
       move: async (ids, opts) => rec("tabs.move", { ids, opts }),
       update: async (id, opts) => rec("tabs.update", { id, opts }),

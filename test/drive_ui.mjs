@@ -581,6 +581,86 @@ check(
 );
 await page.screenshot({ path: join(shots, "06-visual.png") });
 
+// Reloading one card must refresh that page and restate it, without rebuilding
+// the board: a redirect can change the URL and so the grouping, and regrouping
+// under the cursor would discard the arrangement being built.
+const reloadTarget = await page.evaluate(() =>
+  [...document.querySelectorAll(".card")]
+    .map((c) => Number(c.dataset.tabId))
+    .find((id) => id % 19 && id % 17 && id % 23 && id % 31),
+);
+const cardFor = (id) => page.locator(`.card[data-tab-id="${id}"]`);
+const cardsBeforeReload = await page.locator(".card").count();
+const labelsBeforeReload = await labels();
+const titleBeforeReload = await cardFor(reloadTarget).locator(".card-title").textContent();
+await page.evaluate(() => (window.__calls = []));
+await cardFor(reloadTarget).locator(".card-reload").click();
+const spun = await cardFor(reloadTarget)
+  .locator(".card-reload.reloading")
+  .waitFor({ timeout: 3000 })
+  .then(
+    () => true,
+    () => false,
+  );
+check("the reload button spins while the page loads", spun);
+await page.waitForFunction(
+  (id) => !document.querySelector(`.card[data-tab-id="${id}"] .card-reload.reloading`),
+  reloadTarget,
+  { timeout: 20000 },
+);
+const reloadCalls = await page.evaluate(() => window.__calls);
+check(
+  "the button reloads that one page, bypassing the cache",
+  reloadCalls.filter((c) => c.name === "tabs.reload").length === 1 &&
+    reloadCalls.find((c) => c.name === "tabs.reload").arg.id === reloadTarget &&
+    reloadCalls.find((c) => c.name === "tabs.reload").arg.opts.bypassCache === true,
+  JSON.stringify(reloadCalls.filter((c) => c.name === "tabs.reload")),
+);
+const titleAfterReload = await cardFor(reloadTarget).locator(".card-title").textContent();
+check(
+  "the card restates the page after it reloads",
+  titleAfterReload.startsWith("RELOADED") && titleAfterReload !== titleBeforeReload,
+  `${titleBeforeReload.trim()} -> ${titleAfterReload.trim()}`,
+);
+// tabs.reload resolves before the page has loaded, so a card read at that moment
+// would show the stale title. It must wait out the loading status.
+check(
+  "the card waits for the page to finish loading before restating it",
+  reloadCalls.filter((c) => c.name === "tabs.get" && c.arg === reloadTarget).length >= 2,
+  `${reloadCalls.filter((c) => c.name === "tabs.get" && c.arg === reloadTarget).length} polls`,
+);
+check(
+  "reloading recaptures that card's thumbnail",
+  reloadCalls.some((c) => c.name === "tabs.captureTab" && c.arg === reloadTarget),
+  JSON.stringify(reloadCalls.filter((c) => c.name === "tabs.captureTab").map((c) => c.arg)),
+);
+await page.waitForTimeout(500);
+check(
+  "the reloaded card shows a thumbnail again",
+  await cardFor(reloadTarget).locator(".thumb:not([hidden])").count(),
+);
+check(
+  "reloading regroups nothing and moves no other tab",
+  (await page.locator(".card").count()) === cardsBeforeReload &&
+    (await labels()).join(",") === labelsBeforeReload.join(",") &&
+    !reloadCalls.some((c) => c.name === "tabs.move" || c.name === "tabs.remove"),
+  `${await page.locator(".card").count()} cards, labels ${(await labels()).join(",")}`,
+);
+
+const refusedTarget = await page.evaluate(() =>
+  [...document.querySelectorAll(".card")]
+    .map((c) => Number(c.dataset.tabId))
+    .find((id) => id % 19 === 0),
+);
+await cardFor(refusedTarget).locator(".card-reload").click();
+await page.waitForTimeout(400);
+check(
+  "a page that refuses to reload reports it and stops spinning",
+  /Reload failed/.test(await page.textContent("#banner-text")) &&
+    (await cardFor(refusedTarget).locator(".card-reload.reloading").count()) === 0,
+  (await page.textContent("#banner-text")).trim(),
+);
+
 // The banner must be dismissible: it reports failures the user may want gone.
 await page.click("#refresh-btn");
 await page.waitForTimeout(200);

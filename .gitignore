@@ -6,3 +6,7 @@ _harness_big.html
 # tracked
 test/screenshots/*
 !test/screenshots/03-title.png
+
+# web-ext sign
+web-ext-artifacts/
+.amo-upload-uuid

@@ -154,6 +154,13 @@ function renderCard(tab, isDup) {
     thumb.hidden = false;
   }
 
+  const reload = node.querySelector(".card-reload");
+  reload.classList.toggle("reloading", reloading.has(tab.id));
+  reload.addEventListener("click", (e) => {
+    e.stopPropagation();
+    reloadTab(tab.id);
+  });
+
   node.querySelector(".card-close").addEventListener("click", (e) => {
     e.stopPropagation();
     closeTab(tab.id);
@@ -293,6 +300,69 @@ function moveTabInModel(tabId, targetColId, beforeId) {
   } else {
     target.tabIds.push(tabId);
   }
+}
+
+const RELOAD_TIMEOUT_MS = 15000;
+const RELOAD_POLL_MS = 300;
+const reloading = new Set();
+
+// The reloaded title, favicon and URL only exist once the page has loaded, so
+// tabs.reload resolving says nothing about what the card should now say.
+async function settledTab(id) {
+  const deadline = Date.now() + RELOAD_TIMEOUT_MS;
+  for (;;) {
+    const tab = await browser.tabs.get(id);
+    if (tab.status !== "loading" || Date.now() > deadline) return tab;
+    await new Promise((r) => setTimeout(r, RELOAD_POLL_MS));
+  }
+}
+
+async function reloadTab(id) {
+  if (reloading.has(id)) return;
+  reloading.add(id);
+  paintReloading(id);
+  try {
+    await browser.tabs.reload(id, { bypassCache: true });
+    const fresh = await settledTab(id);
+    if (!state.tabsById.has(id)) return;
+    state.tabsById.set(id, fresh);
+    thumbCache.delete(id);
+    refused.delete(id);
+    attempts.delete(id);
+    replaceCard(id);
+    // The card was already admitted to the queue once, so recapture must bypass
+    // EAGER_LIMIT the same way a retry does — else a reload past the cap leaves
+    // the card permanently blank.
+    if (state.visual) {
+      retryQueue.add(id);
+      pumpCaptures();
+    }
+  } catch (err) {
+    setBanner(`Reload failed: ${err.message}`, true);
+  } finally {
+    reloading.delete(id);
+    paintReloading(id);
+  }
+}
+
+// Always addressed by tab id, never by a captured node: a view switch or a drag
+// can re-render the board while a reload is still in flight.
+function paintReloading(id) {
+  const btn = els.board.querySelector(`.card[data-tab-id="${id}"] .card-reload`);
+  btn?.classList.toggle("reloading", reloading.has(id));
+}
+
+// One card in place rather than a rebuild: a redirect can change the URL and so
+// the grouping, and regrouping the board under the cursor would discard exactly
+// the arrangement the user is building. The fresh node must be re-observed or it
+// drops out of the thumbnail queue.
+function replaceCard(id) {
+  const old = els.board.querySelector(`.card[data-tab-id="${id}"]`);
+  const tab = state.tabsById.get(id);
+  if (!old || !tab) return;
+  const fresh = renderCard(tab, new Set(duplicateTabIds(currentTabs())).has(id));
+  old.replaceWith(fresh);
+  observer?.observe(fresh);
 }
 
 async function closeTab(id) {
@@ -500,6 +570,9 @@ function pumpCaptures() {
 
 function reportThumbProgress() {
   if (!state.visual) return;
+  // Capture progress keeps arriving for as long as the board is open, so writing
+  // it unconditionally erases any failure the user hasn't read yet.
+  if (els.banner.classList.contains("error")) return;
   const ids = [...state.tabsById.keys()];
   const total = ids.length;
   const got = ids.filter((id) => thumbCache.has(id)).length;

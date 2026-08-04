@@ -71,6 +71,17 @@ browser binary and takes ~40s. Run it yourself before calling a UI change done.
   Firefox is final. Timeouts escalate (`CAPTURE_TIMEOUT_MS`) and retries use their
   own queue that bypasses `EAGER_LIMIT` — counting stored thumbnails would
   otherwise strand every retry once the cap was reached.
+- Per-card reload replaces one card, never `rebuildColumns`: a redirect can change
+  the URL and so the grouping, and regrouping under the cursor would discard the
+  arrangement being built. The fresh node must be re-`observe`d or it drops out of
+  the thumbnail queue, and the recapture goes on `retryQueue` so `EAGER_LIMIT`
+  can't leave a reloaded card permanently blank.
+- `tabs.reload` resolves before the page has loaded, so the new title, favicon and
+  URL don't exist yet; `settledTab` polls `status` out of `loading` first. Reading
+  the tab any earlier just re-renders the stale card.
+- `reportThumbProgress` won't overwrite an error banner. Progress keeps arriving
+  for as long as the board is open, so it otherwise erases every failure before
+  it's read.
 - Saved sessions carry `{ version, groups: [{ label, tabs: [{ url, title }] }] }`
   and no browser ids; ids mean nothing in a later session. `parseSession` accepts
   looser shapes so a hand-edited file still imports, and keeps `http(s)` only.

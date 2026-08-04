@@ -43,7 +43,8 @@ Nothing moves in the browser until you click **Apply**.
 
 Drag a card between columns or within one. Drag a column header to reorder the
 board; that moves nothing in the browser. Double-click a card to jump to it,
-`×` closes it. The `×` on a search column ungroups it.
+`↻` reloads that page and restates the card, `×` closes it. The `×` on a search
+column ungroups it.
 
 ## Develop
 
